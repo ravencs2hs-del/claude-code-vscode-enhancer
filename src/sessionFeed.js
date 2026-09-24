@@ -3,10 +3,11 @@
 // What the webview gets to know about the sessions. The full list is sent once (after the webview
 // loaded), then only what changed, so a busy transcript does not resend thousands of sessions.
 
-const FIELDS = ['title', 'mtime', 'createdAt', 'branch', 'prompt', 'worktree'];
+const FIELDS = ['title', 'mtime', 'createdAt', 'branch', 'prompt', 'worktree', 'active'];
+const NONE = new Map();
 
-/** The part of an index entry the webview uses. */
-function viewSession(s) {
+/** The part of an index entry the webview uses; `active` is 'busy' or 'idle' while a process has it open. */
+function viewSession(s, active = NONE) {
   return {
     id: s.id,
     title: s.title,
@@ -15,6 +16,7 @@ function viewSession(s) {
     branch: s.gitBranch,
     prompt: s.firstPrompt,
     worktree: s.worktree,
+    active: active.get(s.id),
   };
 }
 
@@ -29,9 +31,9 @@ class SessionFeed {
   }
 
   /** The message that brings the webview up to date with `sessions`, or null when it already is. */
-  update(sessions) {
+  update(sessions, active) {
     const next = new Map();
-    for (const s of sessions) next.set(s.id, viewSession(s));
+    for (const s of sessions) next.set(s.id, viewSession(s, active));
     const prev = this.sent;
     this.sent = next;
     if (!prev) return { type: 'sessions', full: [...next.values()] };

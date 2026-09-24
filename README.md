@@ -1,12 +1,14 @@
-# Claude Code Groups
+# Claude Enhancer
 
-Proper session grouping for **Claude Code for VS Code**. It adds its own side bar view
-(Activity Bar → *Claude Groups*) where the Claude Code sessions of your workspace can be
-organized into groups and folders. A click opens a session in Claude Code, just like the
+A better home for your **Claude Code** sessions in VS Code. It adds its own side bar view
+(Activity Bar → *Claude Enhancer*) where the Claude Code sessions of your workspace can be
+organized into groups and folders, filtered down to the ones that are running, with your
+account and plan usage limits on top. A click opens a session in Claude Code, just like the
 official list does.
 
 <p>
-  <img src="docs/overview.png" width="320" alt="Groups and subgroups with indented sessions and tree lines">
+  <img src="docs/overview.png" width="320" alt="Usage limits and account on top, groups and subgroups with indented sessions and tree lines">
+  <img src="docs/active.png" width="320" alt="Only the active sessions, still in their groups">
   <img src="docs/new-session.png" width="320" alt="Starting a new session in a group">
 </p>
 
@@ -21,6 +23,12 @@ the official Claude Code extension is terrible, and it's a pain in the Claude de
 
 ## Features
 
+- **Usage limits and account on top**: your 5-hour and weekly limits with a bar, the percentage
+  used and when they reset, plus the signed-in account and plan. Figures turn orange above 70%
+  and red above 90%.
+- **Active sessions**: the `● 3` button next to the search box shows how many sessions a Claude
+  Code process has open; click it to see only those, still inside their groups. A pulsing dot
+  means Claude is working on it, a ring means it is open and waiting for you.
 - **Groups you can rearrange**: drag a group above or below another one; a blue line shows
   where it goes. The ↑/↓ buttons (on hover), `Alt+↑`/`Alt+↓` and the context menu
   (*Move to Top/Bottom*) do the same.
@@ -60,6 +68,7 @@ the official Claude Code extension is terrible, and it's a pain in the Claude de
 | Rename | `F2` or the pencil icon |
 | Delete a group | trash icon or `Delete` (its subgroups go too; the sessions stay, they just leave the groups) |
 | Search | `Ctrl+F` or `/` in the list, `Esc` clears it |
+| Only the active sessions | the `●` button next to the search box (click again to show all) |
 | Navigate | `↑`/`↓`, `←`/`→` (collapse/expand), `Home`/`End`, `Space` (select), `Ctrl+A` |
 
 Right-clicking a session offers more: *Resume in Terminal* (`claude --resume <id>`),
@@ -70,6 +79,8 @@ Right-clicking a session offers more: *Resume in Terminal* (`claude --resume <id
 | Setting | Default | Description |
 | --- | --- | --- |
 | `claudeGroups.language` | `auto` | Language of the view and its messages: `auto` (same as VS Code), `en`, `hu`. Command names and settings always follow VS Code |
+| `claudeGroups.showAccount` | `true` | Show the signed-in Claude account at the top |
+| `claudeGroups.showLimits` | `true` | Show the plan usage limits (5-hour and weekly) at the top |
 | `claudeGroups.itemPrefix` | `tree` | Prefix: `tree`, `bullet`, `arrow`, `dash`, `number`, `custom`, `none` |
 | `claudeGroups.customPrefix` | `»` | Your own prefix (in `custom` mode) |
 | `claudeGroups.itemIndent` | `12` | Extra indentation of the items in pixels, relative to the group's name |
@@ -94,6 +105,13 @@ Right-clicking a session offers more: *Resume in Terminal* (`claude --resume <id
   visible rows are in the DOM), the view gets the sessions once and then only the changes,
   and when a transcript changes only that one file is read again. The whole folder is scanned
   on start, on refresh and every 20 seconds while the view is open.
+- The account and the usage limits come from Claude Code's own state file (`~/.claude.json`):
+  the signed-in account and the usage figures Claude Code caches while it runs, so they are
+  as fresh as Claude Code's last check (the tooltip says when that was). The extension makes
+  no network requests and never reads your credentials.
+- Active sessions: every running Claude Code process (CLI, VS Code extension, desktop app)
+  keeps a small file in `~/.claude/sessions/` with its session and whether it is busy; files
+  of processes that are gone are ignored.
 - Sessions open with the `claude-vscode.editor.open` command of Claude Code (panel), or in a
   terminal with the plain CLI: `claude --resume <id>`, which starts the `claude` process in the
   terminal directly, without a shell (see `claudeGroups.openWith`).
@@ -114,7 +132,7 @@ Download the `.vsix` from the [Releases](https://github.com/ravencs2hs-del/claud
 page, then:
 
 ```bash
-code --install-extension claude-code-groups-1.4.0.vsix
+code --install-extension claude-code-groups-1.5.0.vsix
 ```
 
 ```bash

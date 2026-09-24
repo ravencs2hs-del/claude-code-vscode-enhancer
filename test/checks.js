@@ -103,6 +103,38 @@
       eq(document.documentElement.lang, 'en');
     });
 
+    await check('account and usage limits on top', async () => {
+      await until(() => !$('.account').hidden, 'header');
+      eq([$('.account .uname').textContent, $('.account .plan').textContent], ['Alex Kim', 'Max']);
+      eq($$('.limits .lname').map((e) => e.textContent), ['5-hour', 'Weekly']);
+      eq($$('.limits .pct').map((e) => e.textContent), ['42%', '18%']);
+      eq($('.limits .fill').style.width, '42%');
+    });
+
+    await check('the account and the limits can be hidden', async () => {
+      Object.assign(host.state.settings, { account: false });
+      host.post();
+      await until(() => !$('.account .who') && $('.limits'), 'only the limits');
+      Object.assign(host.state.settings, { limits: false });
+      host.post();
+      await until(() => $('.account').hidden, 'no header');
+      Object.assign(host.state.settings, { account: true, limits: true });
+      host.post();
+      await until(() => !$('.account').hidden && $('.account .who'), 'back');
+    });
+
+    await check('active sessions: dots, and the filter keeps their groups', () => {
+      eq($('.row.session[data-id="s1"] .meta').classList.contains('is-busy'), true, 'busy: pulsing dot');
+      eq($('.row.session[data-id="s6"] .meta').classList.contains('is-open'), true, 'open: ring');
+      eq($('.active-filter .n').textContent, '3', 'busy, open and just changed');
+      $('.active-filter').click();
+      eq($('.active-filter').getAttribute('aria-pressed'), 'true');
+      eq(shown().sort(), ['s1', 's5', 's6']);
+      eq(ids('.row.header[data-kind="group"]'), ['g-docs'], 'only groups with active sessions');
+      $('.active-filter').click();
+      eq(shown().length, 7, 'all again');
+    });
+
     await check('rows are stacked without gaps or overlaps', () => {
       const rows = $$('.vlist > *');
       for (let i = 1; i < rows.length; i++) {

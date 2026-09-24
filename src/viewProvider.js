@@ -47,12 +47,17 @@ function readSettings() {
     order: pick('sessionOrder', ORDERS, 'manual'),
     ungrouped: pick('ungroupedPosition', POSITIONS, 'bottom'),
     singleClick: cfg.get('openOnSingleClick') !== false,
+    account: cfg.get('showAccount') !== false,
+    limits: cfg.get('showLimits') !== false,
   };
 }
 
 class GroupsViewProvider {
-  constructor({ extensionUri, store, index, log, openSession, workspaceName, pendingGroupId, cancelPending, translate }) {
+  constructor({ extensionUri, store, index, active, account, onVisibility, log, openSession, workspaceName, pendingGroupId, cancelPending, translate }) {
     this.translate = translate || (() => Object.assign((m) => m, { language: 'en' }));
+    this.active = active; // ActiveSessions: which sessions a Claude Code process has open
+    this.account = account; // AccountInfo: the signed-in account and its usage limits
+    this.onVisibility = onVisibility || (() => {});
     this.pendingGroupId = pendingGroupId || (() => null);
     this.cancelPending = cancelPending || (() => {});
     this.extensionUri = extensionUri;
@@ -85,18 +90,21 @@ class GroupsViewProvider {
       view.webview.onDidReceiveMessage((msg) => this.onMessage(msg)),
       view.onDidChangeVisibility(() => {
         this.index.setPolling(view.visible);
+        this.onVisibility(view.visible);
         // A hidden webview loses its document; it sends 'ready' again when shown.
         if (view.visible) this.index.schedule(true, 0);
         else this.ready = false;
       }),
     ];
     this.index.setPolling(view.visible);
+    this.onVisibility(view.visible);
     view.onDidDispose(() => {
       subscriptions.forEach((d) => d.dispose());
       if (this.view === view) {
         this.view = undefined;
         this.ready = false;
         this.index.setPolling(false);
+        this.onVisibility(false);
       }
     });
   }
@@ -166,8 +174,15 @@ class GroupsViewProvider {
 
   postSessions() {
     if (!this.view || !this.ready) return;
-    const msg = this.feed.update(this.index.sessions.values());
+    const msg = this.feed.update(this.index.sessions.values(), this.active && this.active.sessions);
     if (msg) this.view.webview.postMessage(msg);
+  }
+
+  /** The signed-in account and its usage limits (null parts when Claude Code has none). */
+  postAccount() {
+    if (!this.view || !this.ready) return;
+    const state = this.account ? this.account.state : { account: null, usage: null };
+    this.view.webview.postMessage({ type: 'account', account: state.account, usage: state.usage });
   }
 
   isKnownSession(id) {
@@ -198,6 +213,7 @@ class GroupsViewProvider {
         this.feed.reset();
         this.postSessions();
         this.postState();
+        this.postAccount();
         for (const queued of this.queue.splice(0)) this.view.webview.postMessage(queued);
         break;
       case 'rendered':

@@ -50,6 +50,100 @@ body {
   stroke-linejoin: round;
 }
 
+/* ------------------------------------------------------------ account and limits */
+
+.account {
+  flex: none;
+  display: grid;
+  gap: 5px;
+  padding: 8px 10px 2px 10px;
+  font-size: 12px;
+}
+
+.who {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.avatar {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.uname {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.plan {
+  flex: none;
+  padding: 0 5px;
+  border: 1px solid var(--soft-border);
+  border-radius: 3px;
+  color: var(--vscode-descriptionForeground);
+  font-size: 10px;
+  line-height: 14px;
+}
+
+.limits {
+  display: grid;
+  grid-template-columns: max-content 1fr max-content max-content;
+  align-items: center;
+  gap: 3px 7px;
+  color: var(--vscode-descriptionForeground);
+  white-space: nowrap;
+}
+
+.limits .bar {
+  height: 4px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--vscode-foreground) 14%, transparent);
+}
+
+.limits .fill {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--vscode-charts-blue, #3794ff);
+}
+
+.limits .bar[data-level='warn'] .fill {
+  background: var(--vscode-charts-orange, #d18616);
+}
+
+.limits .bar[data-level='high'] .fill {
+  background: var(--vscode-charts-red, #f14c4c);
+}
+
+.limits .pct {
+  color: var(--vscode-foreground);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.limits .reset {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.limits [data-level='stale'] {
+  opacity: 0.6;
+}
+
 /* ------------------------------------------------------------ search */
 
 .toolbar {
@@ -111,6 +205,50 @@ body {
 
 .search:focus-within {
   border-color: var(--vscode-focusBorder);
+}
+
+/* "● 3": how many sessions are open; pressed, only those are shown. */
+.active-filter {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 7px;
+  border: 1px solid var(--vscode-input-border, transparent);
+  border-radius: 4px;
+  background: var(--vscode-input-background);
+  color: var(--vscode-descriptionForeground);
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.active-filter .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--vscode-charts-green, #89d185);
+}
+
+.active-filter.none .dot {
+  background: var(--vscode-descriptionForeground);
+  opacity: 0.5;
+}
+
+.active-filter:hover {
+  color: var(--vscode-foreground);
+}
+
+.active-filter.on {
+  border-color: var(--vscode-focusBorder);
+  background: color-mix(in srgb, var(--vscode-focusBorder) 22%, var(--vscode-input-background));
+  color: var(--vscode-foreground);
+}
+
+.active-filter:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: 1px;
 }
 
 .search > .ico {
@@ -419,6 +557,22 @@ body[data-prefix='none'] .item .prefix {
   display: block;
 }
 
+/* Claude is working on it: the dot pulses. Open but waiting: a ring. */
+.meta.is-busy .live {
+  animation: live-pulse 1.4s ease-in-out infinite;
+}
+
+.meta.is-open .live {
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px var(--vscode-charts-green, #89d185);
+}
+
+@keyframes live-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+
 .no-time .time {
   display: none;
 }
@@ -613,4 +767,11 @@ mark {
   font-size: 12px;
   white-space: nowrap;
   text-overflow: ellipsis;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .meta.is-busy .live,
+  .placeholder.pending .title {
+    animation: none;
+  }
 }

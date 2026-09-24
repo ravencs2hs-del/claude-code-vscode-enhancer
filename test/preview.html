@@ -88,12 +88,12 @@
         { id: 'g-idea', name: 'Ötletek', color: 'purple', collapsed: true, sessionIds: ['s4'] },
       ],
       sessions: [
-        session('s1', 'YGX fájl dokumentáció', 125 * min),
+        session('s1', 'YGX fájl dokumentáció', 125 * min, { active: 'busy' }),
         session('s2', 'Docs és bugs mappa létrehozása', 26 * 60 * min, { prompt: 'hozz létre egy docs és egy bugs mappát' }),
         session('s3', 'Unit tesztek a parserhez', 40 * min),
         session('s4', 'Bluetooth widget gyorsan', 3 * 24 * 60 * min),
         session('s5', 'Claude VS Code extension grouping', 0.5 * min),
-        session('s6', 'ViewModel és slider javítás', 5 * 60 * min, { worktree: true }),
+        session('s6', 'ViewModel és slider javítás', 5 * 60 * min, { worktree: true, active: 'idle' }),
         session('s7', 'GTA 6 játék fejlesztés', 9 * 24 * 60 * min),
         session('s8', 'Útmutató hatékony kódolási instrukciókhoz', 50 * 24 * 60 * min),
       ],
@@ -106,7 +106,21 @@
         order: params.get('order') || 'manual',
         ungrouped: params.get('ungrouped') || 'bottom',
         singleClick: true,
+        account: params.get('account') !== '0',
+        limits: params.get('limits') !== '0',
       },
+    },
+    // A made-up account with its usage limits (the 'account' message of the extension).
+    account: { name: 'Alex Kim', email: 'alex@example.com', plan: 'Max' },
+    usage: {
+      fetchedAt: now - 3 * min,
+      limits: [
+        { kind: 'session', percent: 42, resetsAt: now + 133 * min, severity: 'normal' },
+        { kind: 'weekly_all', percent: 18, resetsAt: now + 3 * 24 * 60 * min + 250 * min, severity: 'normal' },
+      ],
+    },
+    postAccount() {
+      window.postMessage({ type: 'account', account: host.account, usage: host.usage }, '*');
     },
     ack: 0,
     latency: Number(params.get('latency') || 5),
@@ -123,17 +137,17 @@
         { id: 'g-idea', name: 'Ideas', color: 'purple', collapsed: true, sessionIds: ['d9', 'd10'] },
       ];
       host.state.sessions = [
-        session('d1', 'Cart page redesign', 0.4 * min),
+        session('d1', 'Cart page redesign', 0.4 * min, { active: 'busy' }),
         session('d2', 'Fix the slow product filter', 3 * h),
         session('d3', 'Introduce dark mode', 26 * h),
-        session('d4', 'Order API error handling', 50 * min),
+        session('d4', 'Order API error handling', 50 * min, { active: 'idle' }),
         session('d5', 'Database migration v3', 4 * 24 * h, { worktree: true }),
         session('d6', 'Login bug in Safari', 2 * h),
         session('d7', 'Duplicate email notifications', 2 * 24 * h),
         session('d8', 'Update the API docs', 8 * 24 * h),
         session('d9', 'Coupon system plan', 12 * 24 * h),
         session('d10', 'Recommendation engine prototype', 20 * 24 * h),
-        session('d11', 'Speed up the CI pipeline', 20 * min),
+        session('d11', 'Speed up the CI pipeline', 20 * min, { active: 'idle' }),
         session('d12', 'Update the README', 6 * h),
         session('d13', 'Improve test coverage', 3 * 24 * h),
         session('d14', 'Card payments (3DS)', 90 * min),
@@ -177,7 +191,7 @@
       const known = (id) => host.state.sessions.some((s) => s.id === id);
       if (Number.isInteger(m.seq)) host.ack = m.seq;
       switch (m.type) {
-        case 'ready': host.ack = 0; host.post(); break;
+        case 'ready': host.ack = 0; host.post(); host.postAccount(); break;
         case 'toggleGroup': host.updateGroups((g) => ops.setCollapsed(g, m.id, m.collapsed)); break;
         case 'toggleUngrouped': host.state.ungroupedCollapsed = m.collapsed; break;
         case 'moveGroup':

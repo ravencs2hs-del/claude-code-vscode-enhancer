@@ -16,6 +16,8 @@ const { SessionIndex, discoverProjectDirs, readSessionMeta } = require('../src/s
 const { SessionFeed } = require('../src/sessionFeed');
 const { readOfficialGroupScopes } = require('../src/officialImport');
 const { resolveLanguage, createTranslator } = require('../src/l10n');
+const { parseAccountState, stateFileFor, planName } = require('../src/account');
+const { readActiveSessions, isAlive } = require('../src/activeSessions');
 const { webviewStrings } = require('../src/webviewStrings');
 
 const ROOT = path.join(__dirname, '..');
@@ -475,6 +477,8 @@ test('SessionFeed sends the full list once, then only the changes', () => {
   assert.deepEqual(delta.upsert.map((x) => x.id), ['a', 'c']);
   assert.deepEqual(delta.remove, ['b']);
   assert.deepEqual(feed.update([s('a', 'A', 2, { gitBranch: 'dev' }), s('c', 'C', 1)]).upsert.map((x) => x.id), ['a'], 'branch change');
+  const opened = feed.update([s('a', 'A', 2, { gitBranch: 'dev' }), s('c', 'C', 1)], new Map([['c', 'busy']]));
+  assert.deepEqual(opened.upsert.map((x) => [x.id, x.active]), [['c', 'busy']], 'a process opened c');
   feed.reset();
   assert.equal(feed.update([s('a', 'A', 2)]).full.length, 1, 'full list after a reset');
 });
@@ -523,6 +527,63 @@ test('GroupStore keeps a corrupt file aside instead of losing it', () => {
   assert.ok(fs.readdirSync(dir).some((f) => f.startsWith('groups.json.corrupt-')));
   store.updateGroups((g) => ops.createGroup(g, { id: 'a', name: 'A' }));
   assert.equal(JSON.parse(fs.readFileSync(file, 'utf8')).scopes.k.groups[0].name, 'A');
+});
+
+// ---------------------------------------------------------------- account, limits, active sessions
+
+test('parseAccountState reads the account and the usage limits Claude Code cached', () => {
+  const state = {
+    oauthAccount: { accountUuid: 'u1', emailAddress: 'a@b.c', displayName: 'Sanyi', organizationType: 'claude_pro' },
+    cachedUsageUtilization: {
+      fetchedAtMs: 1000,
+      accountUuid: 'u1',
+      utilization: {
+        five_hour: { utilization: 99 },
+        limits: [
+          { kind: 'session', percent: 25, severity: 'normal', resets_at: '2026-09-24T20:50:00+00:00' },
+          { kind: 'weekly_all', percent: 17.4, resets_at: null },
+          { kind: 'broken' },
+        ],
+      },
+    },
+  };
+  const { account, usage } = parseAccountState(state);
+  assert.deepEqual(account, { name: 'Sanyi', email: 'a@b.c', plan: 'Pro' });
+  assert.deepEqual(usage, {
+    fetchedAt: 1000,
+    limits: [
+      { kind: 'session', percent: 25, resetsAt: Date.parse('2026-09-24T20:50:00+00:00'), severity: 'normal' },
+      { kind: 'weekly_all', percent: 17, resetsAt: undefined, severity: 'normal' },
+    ],
+  });
+  // Older Claude Code versions only have the per-window fields.
+  const old = parseAccountState({ cachedUsageUtilization: { utilization: { five_hour: { utilization: 40 }, seven_day: { utilization: 3 }, seven_day_opus: null } } });
+  assert.deepEqual(old.usage.limits.map((l) => [l.kind, l.percent]), [['session', 40], ['weekly_all', 3]]);
+  assert.equal(old.account, null);
+  const otherAccount = { ...state, cachedUsageUtilization: { ...state.cachedUsageUtilization, accountUuid: 'u2' } };
+  assert.equal(parseAccountState(otherAccount).usage, null, 'the cache of another account is not shown');
+  assert.deepEqual(parseAccountState(null), { account: null, usage: null });
+  assert.equal(planName('claude_max'), 'Max');
+  assert.equal(planName('claude_something_new'), 'Something new');
+});
+
+test('stateFileFor: ~/.claude.json for the default folder, inside a custom one', () => {
+  assert.equal(stateFileFor(path.join(os.homedir(), '.claude')), path.join(os.homedir(), '.claude.json'));
+  assert.equal(stateFileFor(path.join(os.tmpdir(), 'cfg')), path.join(os.tmpdir(), 'cfg', '.claude.json'));
+});
+
+test('readActiveSessions lists the sessions of live Claude Code processes', async () => {
+  const dir = tmpDir('active');
+  const write = (pid, info) => fs.writeFileSync(path.join(dir, `${pid}.json`), JSON.stringify({ pid, ...info }));
+  write(101, { sessionId: 's-busy', status: 'busy' });
+  write(102, { sessionId: 's-open', status: 'idle' });
+  write(103, { sessionId: 's-gone', status: 'busy' });
+  write(104, { sessionId: 's-open', status: 'busy' }); // open in two processes: busy wins
+  fs.writeFileSync(path.join(dir, '105.json'), '{ broken');
+  const alive = (pid) => pid !== 103;
+  assert.deepEqual([...(await readActiveSessions(dir, alive))].sort(), [['s-busy', 'busy'], ['s-open', 'busy']]);
+  assert.deepEqual([...(await readActiveSessions(path.join(dir, 'missing')))], []);
+  assert.equal(isAlive(process.pid), true);
 });
 
 // ---------------------------------------------------------------- l10n

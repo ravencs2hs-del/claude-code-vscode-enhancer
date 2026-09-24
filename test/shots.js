@@ -91,6 +91,13 @@
     out.push(await save('new-session.png', contentHeight()));
     host.state.pendingGroupId = null;
     host.post();
+    await sleep(250);
+
+    // 5. Only the active sessions, in their groups.
+    $('.active-filter').click();
+    await sleep(100);
+    out.push(await save('active.png', contentHeight()));
+    $('.active-filter').click();
     document.documentElement.style.removeProperty('--preview-height');
     return out.join('\n');
   };

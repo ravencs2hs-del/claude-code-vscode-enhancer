@@ -5,7 +5,7 @@
 
 function webviewStrings(t) {
   return {
-    title: t('Claude groups'),
+    title: t('Claude Enhancer'),
     tree: t('Claude Code groups'),
     search: t('Search…'),
     searchLabel: t('Search sessions'),
@@ -50,6 +50,23 @@ function webviewStrings(t) {
     daysAgo: t('{0} days ago'),
     weekAgo: t('1 week ago'),
     weeksAgo: t('{0} weeks ago'),
+    activeOff: t('Active sessions: {0} – click to show only these'),
+    activeOn: t('Only the active sessions are shown ({0}) – click to show all'),
+    noActive: t('No active sessions right now'),
+    working: t('Working'),
+    open: t('Open, waiting for you'),
+    plan: t('Plan: {0}'),
+    limits: t('Usage limits'),
+    limitSession: t('5-hour'),
+    limitWeek: t('Weekly'),
+    limitWeekOpus: t('Weekly · Opus'),
+    limitWeekSonnet: t('Weekly · Sonnet'),
+    resetsIn: t('Resets {0}, in {1}'),
+    resetSince: t('Reset since Claude Code last checked; it updates this while it runs'),
+    updated: t('Updated {0}'),
+    durMin: t('{0} min'),
+    durHours: t('{0} h {1} min'),
+    durDays: t('{0} d {1} h'),
   };
 }
 

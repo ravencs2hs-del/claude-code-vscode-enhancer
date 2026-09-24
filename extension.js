@@ -12,6 +12,8 @@ const { stripWorktree } = require('./src/sessionMeta');
 const { readOfficialGroupScopes } = require('./src/officialImport');
 const { GroupsViewProvider, VIEW_ID } = require('./src/viewProvider');
 const { resolveLanguage, createTranslator } = require('./src/l10n');
+const { ActiveSessions } = require('./src/activeSessions');
+const { AccountInfo } = require('./src/account');
 
 const OFFICIAL_EXTENSION = 'Anthropic.claude-code';
 const OFFICIAL_OPEN_COMMAND = 'claude-vscode.editor.open';
@@ -154,7 +156,7 @@ function activate(context) {
     createTranslator(l10nDir, resolveLanguage(vscode.workspace.getConfiguration('claudeGroups').get('language'), vscode.env.language));
   let t = makeTranslator();
 
-  const output = vscode.window.createOutputChannel(t('Claude Code Groups'));
+  const output = vscode.window.createOutputChannel('Claude Enhancer');
   const log = (line) => output.appendLine(`[${new Date().toISOString()}] ${line}`);
   const storageDir = context.globalStorageUri.fsPath;
   fs.mkdirSync(storageDir, { recursive: true });
@@ -163,11 +165,26 @@ function activate(context) {
   store.load();
   store.watch();
   const index = new SessionIndex({ cacheFile: path.join(storageDir, 'session-cache.json'), log });
+  // Running Claude Code processes, and the account with its usage limits: followed while the view shows.
+  const active = new ActiveSessions();
+  const account = new AccountInfo();
+  let viewVisible = false;
+  const followClaude = () => {
+    const dir = claudeConfigDir();
+    active.configure(dir, viewVisible);
+    account.configure(dir, viewVisible);
+  };
 
   const provider = new GroupsViewProvider({
     extensionUri: context.extensionUri,
     store,
     index,
+    active,
+    account,
+    onVisibility: (visible) => {
+      viewVisible = visible;
+      followClaude();
+    },
     log,
     openSession: (id) => openSession(id),
     workspaceName: () => path.basename(workspaceRoot()),
@@ -205,18 +222,23 @@ function activate(context) {
     claimNewSession();
     provider.scheduleSessions();
   });
+  active.on('change', () => provider.scheduleSessions());
+  account.on('change', () => provider.postAccount());
 
   context.subscriptions.push(
     output,
     vscode.window.registerWebviewViewProvider(VIEW_ID, provider),
     { dispose: () => store.dispose() },
     { dispose: () => index.dispose() },
+    { dispose: () => active.dispose() },
+    { dispose: () => account.dispose() },
   );
 
   let currentRoot;
   function applyWorkspace() {
     currentRoot = workspaceRoot();
     store.setScopeKey(scopeKeyFor(currentRoot));
+    followClaude();
     return index.configure({ projectsRoot: path.join(claudeConfigDir(), 'projects'), cwdCandidates: cwdCandidates(currentRoot) });
   }
 
@@ -559,7 +581,7 @@ function activate(context) {
   ready.then(() => offerImport());
 
   // Exposed for the integration tests.
-  return { store, index, provider, ready, claudeExecutable };
+  return { store, index, active, account, provider, ready, claudeExecutable };
 }
 
 function deactivate() {}

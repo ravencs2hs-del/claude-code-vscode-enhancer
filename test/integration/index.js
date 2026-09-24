@@ -70,6 +70,21 @@ exports.run = async function run() {
       assert.strictEqual(api.provider.lastRender.groups, 0);
     });
 
+    await step('the account, its limits and the open sessions are picked up', async () => {
+      await waitFor(() => api.provider.lastRender && api.provider.lastRender.header, 'header with the account');
+      assert.strictEqual(api.account.state.account.name, 'Teszt Elek');
+      assert.strictEqual(api.account.state.account.plan, 'Max');
+      assert.deepStrictEqual(api.account.state.usage.limits.map((l) => l.percent), [42, 18]);
+      // A running Claude Code process (this one stands in for it) has session a open.
+      const dir = path.join(process.env.CLAUDE_CONFIG_DIR, 'sessions');
+      const file = path.join(dir, `${process.pid}.json`);
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(file, JSON.stringify({ pid: process.pid, sessionId: IDS.a, status: 'busy' }));
+      await waitFor(() => api.active.sessions.get(IDS.a) === 'busy', 'open session', 10000);
+      fs.unlinkSync(file);
+      await waitFor(() => !api.active.sessions.has(IDS.a), 'closed session', 10000);
+    });
+
     await step('imports the groups kept by the official Claude Code extension', async () => {
       assert.strictEqual(api.store.groups.length, 0);
       await vscode.commands.executeCommand('claudeGroups.importFromClaude');

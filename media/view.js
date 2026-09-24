@@ -62,6 +62,16 @@
   indicator.setAttribute('aria-hidden', 'true');
   $tree.append($note, $list, overlay, indicator);
 
+  // The account and its usage limits on top, and the "active sessions" filter in the toolbar.
+  const $account = h('div', 'account');
+  $account.hidden = true;
+  document.body.prepend($account);
+  const $active = h('button', 'active-filter none');
+  $active.type = 'button';
+  $active.setAttribute('aria-pressed', 'false');
+  $active.append(h('span', 'dot'), h('span', 'n', '0'));
+  document.querySelector('.toolbar').insertBefore($active, document.getElementById('newSession'));
+
   // Texts of the toolbar and the tree.
   document.documentElement.lang = L.lang || 'en';
   if (L.title) document.title = L.title;
@@ -82,7 +92,9 @@
     selected: new Set(Array.isArray(saved.selected) ? saved.selected : []),
     anchor: null,
     showAllUngrouped: saved.showAllUngrouped === true,
+    activeOnly: saved.activeOnly === true,
   };
+  let accountData = { account: null, usage: null }; // the signed-in account and its usage limits
 
   let model = null; // latest state from the extension (groups, settings, …)
   let deferred = null; // state that arrived while dragging or editing
@@ -120,7 +132,13 @@
       focusKey: ui.focusKey,
       selected: [...ui.selected],
       showAllUngrouped: ui.showAllUngrouped,
+      activeOnly: ui.activeOnly,
     });
+  }
+
+  /** Open in a Claude Code process right now (or changed in the last minutes). */
+  function isActive(s, now = Date.now()) {
+    return !!s.active || now - s.mtime < LIVE_MS;
   }
 
   function h(tag, className, text) {
@@ -379,12 +397,17 @@
 
   /**
    * The group tree with the sessions to show. An item: { group, depth, first, last, sessions,
-   * shown, children, total, shownTotal, hidden }, where total counts the whole subtree and a
-   * search match on a group shows everything inside it.
+   * shown, children, total, shownTotal, hidden }, where total counts the whole subtree. Two
+   * filters narrow `shown`: the search (a match on a group shows everything inside it) and
+   * "active only", which keeps the groups but only their open sessions.
    */
   function computeView() {
     const q = fold(ui.query.trim());
     const matches = (s) => fold(s.title).includes(q) || (s.prompt ? fold(s.prompt).includes(q) : false) || s.id.startsWith(q);
+    const now = Date.now();
+    const activeOnly = ui.activeOnly;
+    const filtering = !!q || activeOnly;
+    const pass = (s, nameMatch) => (!activeOnly || isActive(s, now)) && (!q || nameMatch || matches(s));
     const order = model.settings.order;
     const known = new Set(model.groups.map((g) => g.id));
     const childrenOf = new Map(); // parent id (null: top level) → groups, in sibling order
@@ -409,7 +432,7 @@
         }
       }
       list = sortSessions(list, order);
-      const shown = q && !nameMatch ? list.filter(matches) : list;
+      const shown = filtering ? list.filter((s) => pass(s, nameMatch)) : list;
       const kids = (childrenOf.get(group.id) || []).filter((c) => !items.has(c.id));
       const children = kids.map((c, k) => walk(c, depth + 1, k, kids.length, nameMatch));
       let total = list.length;
@@ -428,7 +451,7 @@
         children,
         total,
         shownTotal,
-        hidden: !!q && !nameMatch && !shown.length && children.every((c) => c.hidden),
+        hidden: filtering && !(nameMatch && !activeOnly) && !shown.length && children.every((c) => c.hidden),
       };
       items.set(group.id, item);
       return item;
@@ -437,9 +460,14 @@
     const tree = roots.map((g, k) => walk(g, 0, k, roots.length, false));
     for (const g of model.groups) if (!items.has(g.id)) tree.push(walk(g, 0, 0, 1, false));
     const allUngrouped = [];
-    for (const s of sessions.values()) if (!grouped.has(s.id)) allUngrouped.push(s);
+    let activeCount = 0;
+    for (const s of sessions.values()) {
+      if (isActive(s, now)) activeCount++;
+      if (!grouped.has(s.id)) allUngrouped.push(s);
+    }
     allUngrouped.sort((a, b) => b.mtime - a.mtime);
-    return { q, byId: sessions, groupOf, tree, items, childrenOf, ungrouped: q ? allUngrouped.filter(matches) : allUngrouped };
+    const ungrouped = filtering ? allUngrouped.filter((s) => pass(s, false)) : allUngrouped;
+    return { q, filtering, activeOnly, activeCount, byId: sessions, groupOf, tree, items, childrenOf, ungrouped };
   }
 
   // ------------------------------------------------------------------ flattening
@@ -459,7 +487,7 @@
     for (const item of view.tree) if (!item.hidden) pushGroup(out, item, null);
     if (drag && drag.visual && drag.kind === 'sessions') out.push({ kind: 'dropzone', key: 'dropzone', height: ZONE_H });
     else if (editing && editing.kind === 'create' && !createPlaced) out.push({ kind: 'create', key: 'create', height: ROW_H });
-    else if (!view.q) out.push({ kind: 'add', key: 'add', height: ROW_H, nav: true });
+    else if (!view.filtering) out.push({ kind: 'add', key: 'add', height: ROW_H, nav: true });
     if (position === 'bottom') pushUngrouped(out, false);
     const level1 = out.filter((r) => (r.kind === 'group' && !r.depth) || r.kind === 'ungrouped' || r.kind === 'add');
     level1.forEach((r, k) => {
@@ -477,7 +505,7 @@
   function pushGroup(out, item, place) {
     const g = item.group;
     const color = (g.color && COLOR_VARS[g.color] ? g.color : null) || (place ? place.lineColor : null);
-    const expanded = view.q ? true : !g.collapsed;
+    const expanded = view.filtering ? true : !g.collapsed;
     const head = out.length;
     out.push(
       Object.assign(
@@ -491,7 +519,7 @@
           depth: item.depth,
           color,
           expanded,
-          count: view.q ? item.shownTotal : item.total,
+          count: view.filtering ? item.shownTotal : item.total,
           first: item.first,
           last: item.last,
         },
@@ -501,7 +529,7 @@
     if (expanded) {
       const kids = item.children.filter((c) => !c.hidden);
       const creating = !!editing && editing.kind === 'create' && editing.parentId === g.id;
-      const pending = model.pendingGroupId === g.id && !view.q;
+      const pending = model.pendingGroupId === g.id && !view.filtering;
       const shown = item.shown;
       const empty = !kids.length && !creating && !shown.length && !pending;
       const count = kids.length + (creating ? 1 : 0) + (empty ? 1 : 0) + shown.length + (pending ? 1 : 0);
@@ -525,13 +553,13 @@
 
   function pushUngrouped(out, atTop) {
     if (!sessions.size) return;
-    if (view.q && !view.ungrouped.length) return;
-    const collapsed = !view.q && model.ungroupedCollapsed;
+    if (view.filtering && !view.ungrouped.length) return;
+    const collapsed = !view.filtering && model.ungroupedCollapsed;
     if (!atTop) out.push({ kind: 'sep', key: 'sep', height: SEP_H, head: out.length + 1 });
     const head = out.length;
     out.push({ kind: 'ungrouped', key: 'u', height: ROW_H, nav: true, collapsed, count: view.ungrouped.length });
     if (!collapsed) {
-      const limit = view.q || ui.showAllUngrouped ? Infinity : UNGROUPED_LIMIT;
+      const limit = view.filtering || ui.showAllUngrouped ? Infinity : UNGROUPED_LIMIT;
       const list = view.ungrouped.length > limit ? view.ungrouped.slice(0, limit) : view.ungrouped;
       const rest = view.ungrouped.length - list.length;
       const n = list.length + (rest > 0 ? 1 : 0);
@@ -596,6 +624,8 @@
     const hadFocus = $tree.contains(document.activeElement);
     view = computeView();
     applySettings();
+    renderActiveFilter();
+    renderAccount();
 
     let pruned = false;
     for (const id of ui.selected) {
@@ -627,7 +657,95 @@
       if (r.kind === 'group') groupRows++;
       else if (r.kind === 'session') sessionRows++;
     }
-    send('rendered', { groups: groupRows, sessions: sessionRows, rows: navRows.length, lang: L.lang });
+    send('rendered', { groups: groupRows, sessions: sessionRows, rows: navRows.length, lang: L.lang, active: view.activeCount, header: !$account.hidden });
+  }
+
+  function renderActiveFilter() {
+    const n = view.activeCount;
+    $active.querySelector('.n').textContent = String(n);
+    $active.classList.toggle('on', ui.activeOnly);
+    $active.classList.toggle('none', !n);
+    $active.setAttribute('aria-pressed', String(ui.activeOnly));
+    const title = fmt(ui.activeOnly ? L.activeOn : L.activeOff, n);
+    $active.title = title;
+    $active.setAttribute('aria-label', title);
+  }
+
+  function setActiveOnly(on) {
+    ui.activeOnly = on;
+    persist();
+  }
+
+  // ------------------------------------------------------------------ account and limits
+
+  const timeFmt = new Intl.DateTimeFormat(LOCALE, { hour: 'numeric', minute: '2-digit' });
+  const dayTimeFmt = new Intl.DateTimeFormat(LOCALE, { weekday: 'short', hour: 'numeric', minute: '2-digit' });
+  const LIMIT_LABELS = { session: 'limitSession', weekly_all: 'limitWeek', weekly_opus: 'limitWeekOpus', weekly_sonnet: 'limitWeekSonnet' };
+
+  function limitLabel(kind) {
+    if (LIMIT_LABELS[kind] && L[LIMIT_LABELS[kind]]) return L[LIMIT_LABELS[kind]];
+    const name = kind.replace(/_/g, ' ');
+    return name.charAt(0).toUpperCase() + name.slice(1);
+  }
+
+  /** "2 h 5 min", the time until `ms`. */
+  function duration(ms) {
+    const minutes = Math.max(1, Math.round(ms / 60000));
+    if (minutes < 60) return fmt(L.durMin, minutes);
+    const hours = Math.floor(minutes / 60);
+    if (hours < 48) return fmt(L.durHours, hours, minutes % 60);
+    return fmt(L.durDays, Math.floor(hours / 24), hours % 24);
+  }
+
+  /** The signed-in user and the plan's usage limits, as Claude Code last saw them. */
+  function renderAccount() {
+    const settings = model && model.settings;
+    const account = settings && settings.account ? accountData.account : null;
+    const usage = settings && settings.limits ? accountData.usage : null;
+    const limits = usage ? usage.limits : [];
+    $account.hidden = !account && !limits.length;
+    if ($account.hidden) {
+      $account.replaceChildren();
+      return;
+    }
+    const now = Date.now();
+    const parts = [];
+    if (account) {
+      const who = h('div', 'who');
+      who.title = [account.name, account.email, account.plan ? fmt(L.plan, account.plan) : ''].filter(Boolean).join('\n');
+      who.append(h('span', 'avatar', Array.from(account.name || '?')[0].toUpperCase()), h('span', 'uname', account.name));
+      if (account.plan) who.append(h('span', 'plan', account.plan));
+      parts.push(who);
+    }
+    if (limits.length) {
+      const grid = h('div', 'limits');
+      grid.setAttribute('role', 'group');
+      grid.setAttribute('aria-label', L.limits);
+      for (const l of limits) {
+        // Past its reset the cached figure is out of date (Claude Code refreshes it while it runs).
+        const passed = !!l.resetsAt && l.resetsAt <= now;
+        const level = passed ? 'stale' : l.percent >= 90 ? 'high' : l.percent >= 70 ? 'warn' : 'ok';
+        const label = limitLabel(l.kind);
+        const lines = [`${label}: ${passed ? '–' : `${l.percent}%`}`];
+        if (passed) lines.push(L.resetSince);
+        else if (l.resetsAt) lines.push(fmt(L.resetsIn, dateTimeFmt.format(new Date(l.resetsAt)), duration(l.resetsAt - now)));
+        if (usage.fetchedAt) lines.push(fmt(L.updated, relTime(usage.fetchedAt, now)));
+        const bar = h('span', 'bar');
+        const fill = h('span', 'fill');
+        fill.style.width = `${passed ? 0 : l.percent}%`;
+        bar.append(fill);
+        let reset = '';
+        if (l.resetsAt && !passed) reset = (l.resetsAt - now < 20 * 3600000 ? timeFmt : dayTimeFmt).format(new Date(l.resetsAt));
+        const cells = [h('span', 'lname', label), bar, h('span', 'pct', passed ? '–' : `${l.percent}%`), h('span', 'reset', reset)];
+        for (const cell of cells) {
+          cell.title = lines.join('\n');
+          cell.dataset.level = level;
+        }
+        grid.append(...cells);
+      }
+      parts.push(grid);
+    }
+    $account.replaceChildren(...parts);
   }
 
   /** Rebuilds the rows from the current view model (drag start: drop zone, dragged rows). */
@@ -640,7 +758,7 @@
   function noteText() {
     if (model.loading && !sessions.size) return L.loading;
     if (!sessions.size && !model.groups.length) return fmt(L.noSessions, model.workspace);
-    if (view.q && view.tree.every((g) => g.hidden) && !view.ungrouped.length) return fmt(L.noMatch, ui.query.trim());
+    if (view.filtering && view.tree.every((g) => g.hidden) && !view.ungrouped.length) return view.q ? fmt(L.noMatch, ui.query.trim()) : L.noActive;
     return '';
   }
 
@@ -685,8 +803,8 @@
         if (next.has(row.key)) continue;
         const sig = sigOf(row);
         let entry = rendered.get(row.key);
-        if (!entry || entry.sig !== sig) entry = { el: createRow(row), sig, top: -1, state: '', mtime: row.s ? row.s.mtime : 0 };
-        else if (row.s && entry.mtime !== row.s.mtime) patchTime(entry, row.s);
+        if (!entry || entry.sig !== sig) entry = { el: createRow(row), sig, top: -1, state: '', mtime: row.s ? row.s.mtime : 0, active: row.s ? row.s.active : undefined };
+        else if (row.s && (entry.mtime !== row.s.mtime || entry.active !== row.s.active)) patchMeta(entry, row.s);
         if (entry.top !== tops[i]) {
           entry.el.style.top = `${tops[i]}px`;
           entry.top = tops[i];
@@ -774,12 +892,14 @@
     }
   }
 
-  /** A session's transcript changed: only its time needs updating. */
-  function patchTime(entry, s) {
+  /** A session's transcript changed, or a process opened or closed it: only its time and dot change. */
+  function patchMeta(entry, s) {
     entry.mtime = s.mtime;
+    entry.active = s.active;
     const meta = entry.el.querySelector('.meta');
     if (meta) {
       meta.dataset.mtime = String(s.mtime);
+      meta.dataset.active = s.active || '';
       updateMeta(meta, Date.now());
     }
     entry.el.title = tooltip(s);
@@ -949,18 +1069,23 @@
     if (s.worktree) el.append(h('span', 'tag', L.worktree));
     const meta = h('span', 'meta');
     meta.dataset.mtime = String(s.mtime);
+    meta.dataset.active = s.active || '';
     meta.append(h('span', 'live'), h('span', 'time'));
     updateMeta(meta, Date.now());
     el.append(meta);
     return el;
   }
 
+  /** Time and dot: a pulsing dot while Claude works, a ring while the session is open and waits. */
   function updateMeta(meta, now) {
     const mtime = Number(meta.dataset.mtime);
-    const live = now - mtime < LIVE_MS;
-    meta.classList.toggle('is-live', live);
+    const state = meta.dataset.active;
+    const recent = now - mtime < LIVE_MS;
+    meta.classList.toggle('is-live', !!state || recent);
+    meta.classList.toggle('is-busy', state === 'busy');
+    meta.classList.toggle('is-open', state === 'idle');
     meta.lastChild.textContent = relTime(mtime, now);
-    meta.firstChild.title = live ? L.recent : '';
+    meta.firstChild.title = state === 'busy' ? L.working : state === 'idle' ? L.open : recent ? L.recent : '';
   }
 
   function placeholder(text) {
@@ -1079,7 +1204,7 @@
     if (!model || drag || !model.groups.some((g) => g.id === groupId)) return;
     editing = { kind: 'rename', groupId, n: ++editSeq };
     ui.focusKey = `g:${groupId}`;
-    if (ui.query) setQuery('', false);
+    clearFilters();
     render();
     if (!$list.querySelector('.name-input')) editing = null;
   }
@@ -1087,7 +1212,7 @@
   /** Shows the name input of a new group: at the top level, or as the last subgroup of `parentId`. */
   function beginCreate(sessionIds, parentId) {
     if (!model || drag) return;
-    if (ui.query) setQuery('', false);
+    clearFilters();
     const parent = parentId && model.groups.some((g) => g.id === parentId) ? parentId : null;
     if (parent) expandGroups(selfAndAncestors(parent));
     editing = { kind: 'create', sessionIds: sessionIds.slice(), parentId: parent, n: ++editSeq };
@@ -1157,14 +1282,14 @@
 
   function toggleGroup(id) {
     const g = model.groups.find((x) => x.id === id);
-    if (!g || view.q) return;
+    if (!g || view.filtering) return;
     g.collapsed = !g.collapsed;
     render();
     sendOp('toggleGroup', { id, collapsed: g.collapsed });
   }
 
   function toggleUngrouped() {
-    if (view.q) return;
+    if (view.filtering) return;
     model.ungroupedCollapsed = !model.ungroupedCollapsed;
     render();
     sendOp('toggleUngrouped', { collapsed: model.ungroupedCollapsed });
@@ -1188,7 +1313,7 @@
       model.groups = next;
       render();
       sendOp('moveGroupBy', { id, delta });
-    } else if (row.kind === 'session' && row.groupId && model.settings.order === 'manual' && !view.q) {
+    } else if (row.kind === 'session' && row.groupId && model.settings.order === 'manual' && !view.filtering) {
       ui.focusKey = row.key;
       sendOp('moveSessionBy', { id: row.s.id, delta });
     }
@@ -1249,6 +1374,12 @@
   function focusSearch() {
     $search.focus();
     $search.select();
+  }
+
+  /** Editing needs the whole tree: the search and the "active only" filter step aside. */
+  function clearFilters() {
+    if (ui.query) setQuery('', false);
+    if (ui.activeOnly) setActiveOnly(false);
   }
 
   // ------------------------------------------------------------------ events
@@ -1431,6 +1562,11 @@
     }
   });
   document.getElementById('newSession').addEventListener('click', () => send('newSession', {}));
+  $active.addEventListener('click', () => {
+    if (!model) return;
+    setActiveOnly(!ui.activeOnly);
+    render();
+  });
   $clear.addEventListener('click', () => {
     setQuery('');
     $search.focus();
@@ -1581,7 +1717,7 @@
     if (rows[head].kind === 'ungrouped') return ungroupTarget(head);
 
     const groupId = rows[head].group.id;
-    if (row.kind === 'session' && model.settings.order === 'manual' && !view.q) {
+    if (row.kind === 'session' && model.settings.order === 'manual' && !view.filtering) {
       const top = tops[i];
       const bottom = tops[i + 1];
       let beforeId;
@@ -1671,7 +1807,7 @@
       return;
     }
     if (t.kind === 'new') {
-      if (ui.query) setQuery('', false);
+      clearFilters();
       editing = { kind: 'create', sessionIds: d.ids, parentId: null, n: ++editSeq };
       return;
     }
@@ -1730,6 +1866,11 @@
       case 'focusSearch':
         focusSearch();
         break;
+      case 'account':
+        accountData = { account: msg.account || null, usage: msg.usage || null };
+        if (model && !drag && !editing) render();
+        else renderAccount();
+        break;
       default:
         break;
     }
@@ -1740,8 +1881,13 @@
 
   setInterval(() => {
     if (!model || drag) return;
-    const now = Date.now();
-    for (const meta of $list.querySelectorAll('.meta[data-mtime]')) updateMeta(meta, now);
+    // Sessions age out of "recently active"; with the active filter on, that changes the list.
+    if (ui.activeOnly && !editing) render();
+    else {
+      const now = Date.now();
+      for (const meta of $list.querySelectorAll('.meta[data-mtime]')) updateMeta(meta, now);
+      renderAccount();
+    }
   }, 30000);
 
   $search.value = ui.query;

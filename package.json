@@ -2,7 +2,7 @@
   "name": "claude-code-groups",
   "displayName": "%displayName%",
   "description": "%description%",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "publisher": "zaza",
   "license": "MIT",
   "repository": {
@@ -19,7 +19,7 @@
     "claude",
     "claude code",
     "sessions",
-    "groups",
+    "usage limits",
     "folders"
   ],
   "main": "./extension.js",
@@ -425,6 +425,16 @@
           ],
           "default": "auto",
           "description": "%config.language.description%"
+        },
+        "claudeGroups.showAccount": {
+          "type": "boolean",
+          "default": true,
+          "description": "%config.showAccount.description%"
+        },
+        "claudeGroups.showLimits": {
+          "type": "boolean",
+          "default": true,
+          "description": "%config.showLimits.description%"
         },
         "claudeGroups.itemPrefix": {
           "type": "string",

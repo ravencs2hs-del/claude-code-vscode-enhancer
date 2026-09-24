@@ -34,6 +34,25 @@ write(worktree, 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee', user('munka a worktree-b
 // Another project that must not show up.
 write(path.join(config, 'projects', 'C--valami-mas'), '99999999-9999-4999-8999-999999999999', user('más projekt'));
 
+// Claude Code's state file of a custom config folder: the account and the usage limits it cached.
+const inHours = (h) => new Date(Date.now() + h * 3600000).toISOString();
+fs.writeFileSync(
+  path.join(config, '.claude.json'),
+  JSON.stringify({
+    oauthAccount: { accountUuid: 'acc-1', emailAddress: 'teszt@example.com', displayName: 'Teszt Elek', organizationType: 'claude_max' },
+    cachedUsageUtilization: {
+      fetchedAtMs: Date.now(),
+      accountUuid: 'acc-1',
+      utilization: {
+        limits: [
+          { kind: 'session', percent: 42, resets_at: inHours(2), severity: 'normal' },
+          { kind: 'weekly_all', percent: 18, resets_at: inHours(70), severity: 'normal' },
+        ],
+      },
+    },
+  }),
+);
+
 // Groups as the official Claude Code extension stores them in VS Code's global state.
 const { DatabaseSync } = require('node:sqlite');
 const globalStorage = path.join(work, 'user-data', 'User', 'globalStorage');
