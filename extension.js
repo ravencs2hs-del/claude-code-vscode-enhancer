@@ -193,7 +193,7 @@ function activate(context) {
   store.on('change', () => provider.scheduleState());
   index.on('change', () => {
     claimNewSession();
-    provider.scheduleState();
+    provider.scheduleSessions();
   });
 
   context.subscriptions.push(

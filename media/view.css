@@ -1,5 +1,8 @@
 :root {
+  /* Row heights are also read by view.js to lay out the virtualized list. */
   --row-height: 22px;
+  --sep-height: 11px;
+  --dropzone-height: 36px;
   --guide-x: 12px;
   --item-indent: 12px;
   --indent: calc(var(--guide-x) + var(--item-indent));
@@ -141,12 +144,22 @@ body {
   outline: none;
 }
 
-.block {
+/* Only the rows near the viewport exist; each is placed at its offset in the full list. */
+.vlist {
   position: relative;
   --line: var(--line-color);
 }
 
-.block.colored {
+.vlist > .row,
+.vlist > .item,
+.vlist > .sep,
+.vlist > .dropzone {
+  position: absolute;
+  left: 0;
+  right: 0;
+}
+
+.colored {
   --line: color-mix(in srgb, var(--group-color) 70%, transparent);
 }
 
@@ -233,7 +246,7 @@ body {
   text-align: center;
 }
 
-.colored > .header .count {
+.header.colored .count {
   background: color-mix(in srgb, var(--group-color) 40%, var(--vscode-badge-background));
 }
 
@@ -309,17 +322,22 @@ body {
 
 /* ------------------------------------------------------------ ungrouped */
 
-.ungrouped-block {
-  margin-top: 6px;
-  padding-top: 4px;
+/* Separator line above "Csoport nélkül" (below it when that block is at the top). */
+.sep {
+  height: var(--sep-height);
+}
+
+.sep::before {
+  content: '';
+  position: absolute;
+  top: 6px;
+  left: 0;
+  right: 0;
   border-top: 1px solid var(--vscode-sideBarSectionHeader-border, var(--soft-border));
 }
 
-.ungrouped-block.at-top {
-  margin: 0 0 6px;
-  padding: 0 0 4px;
-  border-top: 0;
-  border-bottom: 1px solid var(--vscode-sideBarSectionHeader-border, var(--soft-border));
+.sep.after::before {
+  top: 4px;
 }
 
 .header.ungrouped {
@@ -501,13 +519,20 @@ mark {
   background: var(--vscode-sideBar-background, transparent);
 }
 
-.drop-into {
+/* Dashed frame around the group (or "Csoport nélkül" block) a drop would go into. */
+.drop-overlay {
+  display: none;
+  position: absolute;
+  left: 0;
+  right: 0;
   border-radius: 3px;
   outline: 1px dashed var(--vscode-focusBorder);
   outline-offset: -1px;
+  pointer-events: none;
+  z-index: 4;
 }
 
-.drop-into > .header {
+.row.drop-into {
   background: var(--vscode-list-dropBackground);
 }
 

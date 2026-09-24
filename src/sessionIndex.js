@@ -3,6 +3,9 @@
 // Finds the Claude Code sessions of the current workspace and keeps them up to date.
 // Only the first/last 64 KiB of each transcript is read, and results are cached by
 // (mtime, size) in memory and on disk, so large session folders stay cheap to rescan.
+// While Claude works, its transcript changes several times a second: the file watchers name
+// the file, and only that file is looked at again. Full rescans happen on start, on refresh
+// and on the polling safety net.
 
 const fs = require('fs');
 const fsp = fs.promises;
@@ -13,9 +16,16 @@ const { HEAD_TAIL_BYTES, PARSER_VERSION, parseSessionMeta, projectDirName } = re
 const CACHE_LIMIT = 4000;
 const CASE_INSENSITIVE = process.platform === 'win32' || process.platform === 'darwin';
 const WORKTREE_INFIX = '--claude-worktrees-';
+const JSONL = '.jsonl';
+const ENTRY_FIELDS = ['file', 'worktree', 'mtime', 'title', 'firstPrompt', 'gitBranch', 'cwd', 'createdAt'];
 
 function norm(p) {
   return CASE_INSENSITIVE ? p.toLowerCase() : p;
+}
+
+/** A session transcript directly in a project folder (subagent transcripts are not sessions). */
+function isTranscript(name) {
+  return name.endsWith(JSONL) && !name.startsWith('agent-') && !/[/\\]/.test(name);
 }
 
 async function readSessionMeta(file, size) {
@@ -92,6 +102,8 @@ class SessionIndex extends EventEmitter {
     this.inFlight = undefined;
     this.again = false;
     this.rediscover = true;
+    this.fullScan = true;
+    this.dirty = new Map(); // transcripts the watchers reported: file → worktree
     this.cacheDirty = false;
     this.disposed = false;
     this.loadCache();
@@ -118,16 +130,35 @@ class SessionIndex extends EventEmitter {
     this.pollTimer = active ? setInterval(() => this.schedule(true), 20000) : undefined;
   }
 
+  /** Schedules a full rescan. */
   schedule(rediscover = false, delay = 350) {
     if (rediscover) this.rediscover = true;
+    this.fullScan = true;
+    this.kick(delay);
+  }
+
+  /** Schedules another look at one transcript (a watcher saw it change, appear or go away). */
+  touch(file, worktree) {
+    this.dirty.set(file, worktree);
+    this.kick(350);
+  }
+
+  kick(delay) {
     if (this.refreshTimer || this.disposed) return;
     this.refreshTimer = setTimeout(() => {
       this.refreshTimer = undefined;
-      this.refresh();
+      this.sync();
     }, delay);
   }
 
+  /** Full rescan of the project folders. */
   refresh() {
+    this.fullScan = true;
+    return this.sync();
+  }
+
+  /** Does what is due: a full scan if one was asked for, otherwise a look at the touched files. */
+  sync() {
     if (this.inFlight) {
       this.again = true;
       return this.inFlight;
@@ -136,7 +167,13 @@ class SessionIndex extends EventEmitter {
       try {
         do {
           this.again = false;
-          await this.scan();
+          if (this.fullScan || this.rediscover) {
+            this.fullScan = false;
+            this.dirty.clear();
+            await this.scan();
+          } else if (this.dirty.size) {
+            await this.rescanFiles();
+          }
         } while (this.again && !this.disposed);
       } catch (e) {
         this.log(`Session scan failed: ${(e && e.stack) || e}`);
@@ -145,6 +182,66 @@ class SessionIndex extends EventEmitter {
       }
     })();
     return this.inFlight;
+  }
+
+  /** Cached metadata of a transcript, read again only when its size or mtime changed. */
+  async metaFor(file, st) {
+    let cached = this.cache.get(file);
+    if (!cached || cached.mtimeMs !== st.mtimeMs || cached.size !== st.size) {
+      let meta = null;
+      try {
+        meta = await readSessionMeta(file, st.size);
+      } catch (e) {
+        this.log(`Could not read ${file}: ${e}`);
+      }
+      cached = { mtimeMs: st.mtimeMs, size: st.size, meta };
+      this.cache.set(file, cached);
+      this.cacheDirty = true;
+    }
+    return cached;
+  }
+
+  /** Updates the sessions of the transcripts the watchers reported. */
+  async rescanFiles() {
+    const batch = [...this.dirty];
+    this.dirty.clear();
+    let changed = false;
+    await mapLimit(batch, 8, async ([file, worktree]) => {
+      const id = path.basename(file, JSONL);
+      const current = this.sessions.get(id);
+      let st;
+      try {
+        st = await fsp.stat(file);
+      } catch {
+        st = null;
+      }
+      if (!st || !st.isFile()) {
+        // Gone (deleted or renamed): a full scan settles it, another folder may have a copy.
+        if (this.cache.delete(file)) this.cacheDirty = true;
+        if (current && current.file === file) {
+          this.fullScan = true;
+          this.again = true;
+        }
+        return;
+      }
+      const cached = await this.metaFor(file, st);
+      const mtime = Math.trunc(st.mtimeMs);
+      if (!cached.meta) {
+        if (current && current.file === file) {
+          this.sessions.delete(id);
+          changed = true;
+        }
+        return;
+      }
+      // Same id in two folders (a worktree and its repository): the newer transcript wins.
+      if (current && current.file !== file && current.mtime >= mtime) return;
+      const entry = { id, file, worktree, mtime, ...cached.meta };
+      if (current && ENTRY_FIELDS.every((k) => current[k] === entry[k])) return;
+      this.sessions.set(id, entry);
+      changed = true;
+    });
+    if (this.cacheDirty) this.saveCacheSoon();
+    if (changed) this.emit('change');
   }
 
   async scan() {
@@ -166,7 +263,7 @@ class SessionIndex extends EventEmitter {
       } catch {
         continue;
       }
-      const files = entries.filter((e) => e.isFile() && e.name.endsWith('.jsonl') && !e.name.startsWith('agent-'));
+      const files = entries.filter((e) => e.isFile() && isTranscript(e.name));
       await mapLimit(files, 8, async (entry) => {
         const file = path.join(dir, entry.name);
         let st;
@@ -176,20 +273,9 @@ class SessionIndex extends EventEmitter {
           return;
         }
         seen.add(file);
-        let cached = this.cache.get(file);
-        if (!cached || cached.mtimeMs !== st.mtimeMs || cached.size !== st.size) {
-          let meta = null;
-          try {
-            meta = await readSessionMeta(file, st.size);
-          } catch (e) {
-            this.log(`Could not read ${file}: ${e}`);
-          }
-          cached = { mtimeMs: st.mtimeMs, size: st.size, meta };
-          this.cache.set(file, cached);
-          this.cacheDirty = true;
-        }
+        const cached = await this.metaFor(file, st);
         if (!cached.meta) return;
-        const id = entry.name.slice(0, -'.jsonl'.length);
+        const id = entry.name.slice(0, -JSONL.length);
         const mtime = Math.trunc(st.mtimeMs);
         const prev = next.get(id);
         if (prev && prev.mtime >= mtime) return;
@@ -226,9 +312,10 @@ class SessionIndex extends EventEmitter {
         // Missing folder: polling picks it up once it exists.
       }
     };
-    for (const { dir } of this.dirs) {
+    for (const { dir, worktree } of this.dirs) {
       add(dir, (_event, name) => {
-        if (!name || String(name).endsWith('.jsonl')) this.schedule();
+        if (!name) this.schedule();
+        else if (isTranscript(String(name))) this.touch(path.join(dir, String(name)), worktree);
       });
     }
     if (this.projectsRoot) {
@@ -275,6 +362,7 @@ class SessionIndex extends EventEmitter {
 
   dispose() {
     this.disposed = true;
+    this.dirty.clear();
     clearTimeout(this.refreshTimer);
     clearTimeout(this.cacheTimer);
     clearInterval(this.pollTimer);

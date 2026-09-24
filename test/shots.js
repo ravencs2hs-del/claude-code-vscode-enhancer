@@ -32,9 +32,7 @@
   }
 
   function contentHeight() {
-    const tree = $('#tree');
-    const last = [...tree.children].filter((c) => c.offsetHeight && !c.classList.contains('drop-indicator')).pop();
-    return Math.ceil(last.getBoundingClientRect().bottom + 14);
+    return Math.ceil($('#tree .vlist').getBoundingClientRect().bottom + 14);
   }
 
   async function startDrag(src, dst, where) {
@@ -66,7 +64,7 @@
     hover.remove();
 
     // 2. Dragging "Bugfixek" above "Webshop frontend".
-    let dt = await startDrag(header('g-bugs'), $('.group-block[data-group-id="g-front"]'), 'top');
+    let dt = await startDrag(header('g-bugs'), header('g-front'), 'top');
     await sleep(60);
     out.push(await save('drag-group.png', contentHeight()));
     await endDrag(dt);

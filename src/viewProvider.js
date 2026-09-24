@@ -3,6 +3,7 @@
 const vscode = require('vscode');
 const crypto = require('crypto');
 const ops = require('./groupOps');
+const { SessionFeed } = require('./sessionFeed');
 
 const VIEW_ID = 'claudeGroups.sessions';
 const PREFIXES = ['tree', 'bullet', 'arrow', 'dash', 'number', 'custom', 'none'];
@@ -52,6 +53,10 @@ class GroupsViewProvider {
     this.selection = [];
     this.ack = 0;
     this.stateTimer = undefined;
+    this.stateDirty = false;
+    this.sessionsDirty = false;
+    this.feed = new SessionFeed();
+    this.sentLoading = undefined;
     this.lastRender = undefined;
     this.webviewErrors = [];
   }
@@ -92,35 +97,39 @@ class GroupsViewProvider {
     else this.queue.push(msg);
   }
 
+  /** Groups, settings or the pending new session changed. */
   scheduleState() {
+    this.stateDirty = true;
+    this.scheduleFlush();
+  }
+
+  /** The session index changed: the webview gets only the changed sessions. */
+  scheduleSessions() {
+    this.sessionsDirty = true;
+    this.scheduleFlush();
+  }
+
+  scheduleFlush() {
     if (this.stateTimer) return;
     this.stateTimer = setTimeout(() => {
       this.stateTimer = undefined;
-      this.postState();
+      const sessions = this.sessionsDirty;
+      const state = this.stateDirty || this.index.loading !== this.sentLoading;
+      this.sessionsDirty = false;
+      this.stateDirty = false;
+      if (sessions) this.postSessions();
+      if (state) this.postState();
     }, 25);
   }
 
   buildState() {
     const scope = this.store.scope;
-    const sessions = [];
-    for (const s of this.index.sessions.values()) {
-      sessions.push({
-        id: s.id,
-        title: s.title,
-        mtime: s.mtime,
-        createdAt: s.createdAt,
-        branch: s.gitBranch,
-        prompt: s.firstPrompt,
-        worktree: s.worktree,
-      });
-    }
     return {
       type: 'state',
       ack: this.ack,
       loading: this.index.loading,
       groups: scope.groups,
       ungroupedCollapsed: scope.ungroupedCollapsed,
-      sessions,
       pendingGroupId: this.pendingGroupId(),
       settings: readSettings(),
       workspace: this.workspaceName(),
@@ -129,7 +138,15 @@ class GroupsViewProvider {
 
   postState() {
     if (!this.view || !this.ready) return;
-    this.view.webview.postMessage(this.buildState());
+    const state = this.buildState();
+    this.sentLoading = state.loading;
+    this.view.webview.postMessage(state);
+  }
+
+  postSessions() {
+    if (!this.view || !this.ready) return;
+    const msg = this.feed.update(this.index.sessions.values());
+    if (msg) this.view.webview.postMessage(msg);
   }
 
   isKnownSession(id) {
@@ -156,6 +173,9 @@ class GroupsViewProvider {
       case 'ready':
         this.ready = true;
         this.ack = 0;
+        // A (re)loaded webview has no sessions yet: the full list first, then the state.
+        this.feed.reset();
+        this.postSessions();
         this.postState();
         for (const queued of this.queue.splice(0)) this.view.webview.postMessage(queued);
         break;

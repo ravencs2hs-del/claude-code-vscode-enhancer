@@ -137,6 +137,33 @@
         session('d13', 'Tesztlefedettség javítása', 3 * 24 * h),
       ];
     },
+    // Many groups and sessions for performance testing: ?stress=<groups>x<per group>+<ungrouped>, e.g. 80x40+400.
+    stress(spec) {
+      // (A "+" in the query string arrives as a space.)
+      const m = /^(\d+)x(\d+)(?:[+ ](\d+))?$/.exec(spec.trim()) || [];
+      const groupCount = Number(m[1] || 80);
+      const perGroup = Number(m[2] || 40);
+      const loose = Number(m[3] || 400);
+      const words = ['Kosár', 'oldal', 'újratervezése', 'Termékszűrő', 'lassúság', 'javítása', 'Dark', 'mode', 'Rendelés-API', 'hibakezelés',
+        'Adatbázis', 'migráció', 'Bejelentkezési', 'hiba', 'értesítések', 'dokumentáció', 'Kuponrendszer', 'terv', 'Ajánlómotor', 'prototípus',
+        'CI', 'pipeline', 'gyorsítása', 'README', 'frissítése', 'Tesztlefedettség', 'parser', 'unit', 'tesztek', 'refaktor'];
+      const title = (n) => Array.from({ length: 3 + (n % 4) }, (_, k) => words[(n * 7 + k * 13) % words.length]).join(' ');
+      const colors = [null, 'red', 'orange', 'yellow', 'green', 'blue', 'purple', 'pink', 'gray'];
+      host.state.groups = [];
+      host.state.sessions = [];
+      let n = 0;
+      const add = () => {
+        const id = `st${n}`;
+        host.state.sessions.push(session(id, `${title(n)} #${n}`, ((n * 37) % 9000) * min, { prompt: n % 3 ? `kérés: ${title(n + 1)}` : undefined, worktree: n % 17 === 0 }));
+        n++;
+        return id;
+      };
+      for (let g = 0; g < groupCount; g++) {
+        const sessionIds = Array.from({ length: perGroup }, add);
+        host.state.groups.push({ id: `sg${g}`, name: `Csoport ${g + 1} – ${words[g % words.length]}`, color: colors[g % colors.length], collapsed: false, sessionIds });
+      }
+      for (let i = 0; i < loose; i++) add();
+    },
     post() {
       window.postMessage(JSON.parse(JSON.stringify(Object.assign({ type: 'state', ack: host.ack }, host.state))), '*');
     },
@@ -182,6 +209,7 @@
     },
   };
   if (params.get('demo') === '1') host.demo();
+  if (params.get('stress')) host.stress(params.get('stress'));
   window.host = host;
   window.acquireVsCodeApi = () => ({
     postMessage: (m) => { host.log.push(m); setTimeout(() => host.handle(m), host.latency); },
@@ -191,5 +219,7 @@
 </script>
 <script src="../media/view.js"></script>
 <script src="shots.js"></script>
+<script src="bench.js"></script>
+<script src="checks.js"></script>
 </body>
 </html>

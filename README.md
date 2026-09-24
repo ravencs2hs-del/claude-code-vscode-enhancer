@@ -76,6 +76,10 @@ Jobbklikkre a session-ökön további parancsok is vannak: *Folytatás terminál
   Az első munkaterület-mappa és a hozzá tartozó `.claude/worktrees/*` session-jei jelennek meg.
   A cím ugyanúgy képződik, mint a hivatalos listában (saját cím → AI-cím → utolsó kérés).
   Nagy átiratoknál is csak az első és az utolsó 64 KB-ot olvassa, az eredményt gyorsítótárazza.
+- Sok csoporttal és több ezer session-nel is gyors marad: a lista virtualizált (csak a látható
+  sorok vannak a DOM-ban), a nézet a session-öket egyszer kapja meg egészben, utána csak a
+  változásokat, és ha egy átirat változik, csak azt az egy fájlt olvassa újra. A teljes mappát
+  indításkor, frissítéskor és (nyitott nézetnél) 20 másodpercenként nézi át.
 - A megnyitás a Claude Code `claude-vscode.editor.open` parancsával történik (panel), vagy
   terminálban a sima CLI-vel: `claude --resume <id>`. Ez közvetlenül a `claude` folyamatot
   indítja a terminálban, shell nélkül (lásd `claudeGroups.openWith`).
@@ -96,7 +100,7 @@ Töltsd le a `.vsix` fájlt a [Releases](https://github.com/ravencs2hs-del/claud
 oldalról, majd:
 
 ```bash
-code --install-extension claude-code-groups-1.1.0.vsix
+code --install-extension claude-code-groups-1.2.0.vsix
 ```
 
 ```bash
@@ -111,6 +115,10 @@ Nem kell hozzá Node vagy npm, minden a VS Code beépített Node-jával fut
 - Unit tesztek: `test/unit.test.js`
 - Böngészős előnézet mock hosttal: `test/serve.cmd`, majd `http://localhost:8765/`
   (`?prefix=bullet&indent=24&latency=60` stb.)
+  - A konzolban `await checks()` végigpróbálja a nézet működését (billentyűzet, kijelölés,
+    keresés, átnevezés, húzás, görgetés sok sorral); friss, paraméter nélküli oldalon futtasd.
+  - Terheléses teszt: `?stress=80x40+400` (80 csoport × 40 session + 400 csoport nélküli),
+    majd `await bench()` kiírja, hány ms egy-egy művelet.
 - Integrációs tesztek külön VS Code példányban: `test/run-integration.ps1`
 - VSIX készítése: `scripts/pack.js`
 

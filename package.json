@@ -2,7 +2,7 @@
   "name": "claude-code-groups",
   "displayName": "Claude Code Csoportok",
   "description": "Komolyabb session-csoportosítás a Claude Code-hoz: behúzott, előtaggal jelölt elemek, húzással átrendezhető csoportok, színek és keresés.",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "publisher": "zaza",
   "license": "MIT",
   "repository": {

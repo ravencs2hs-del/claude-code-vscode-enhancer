@@ -13,6 +13,7 @@ const ops = require('../src/groupOps');
 const meta = require('../src/sessionMeta');
 const { GroupStore } = require('../src/groupStore');
 const { SessionIndex, discoverProjectDirs, readSessionMeta } = require('../src/sessionIndex');
+const { SessionFeed } = require('../src/sessionFeed');
 const { readOfficialGroupScopes } = require('../src/officialImport');
 
 function tmpDir(name) {
@@ -330,6 +331,73 @@ test('SessionIndex lists sessions, skips sidechains and picks up changes', async
   await again.configure({ projectsRoot: projects, cwdCandidates: ['C:\\ws'] });
   assert.deepEqual([...again.sessions.keys()], ['22222222-2222-4222-8222-222222222222']);
   again.dispose();
+});
+
+test('SessionIndex re-reads only the transcripts a watcher reported', async () => {
+  const config = tmpDir('touch');
+  const projects = path.join(config, 'projects');
+  const dir = path.join(projects, meta.projectDirName('C:\\ws'));
+  fs.mkdirSync(dir, { recursive: true });
+  const file = (id) => path.join(dir, `${id}.jsonl`);
+  const A = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+  const B = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+  const C = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+  fs.writeFileSync(file(A), `${user('első')}\n`);
+  fs.writeFileSync(file(B), `${user('második')}\n`);
+
+  const index = new SessionIndex({ cacheFile: path.join(config, 'cache.json') });
+  await index.configure({ projectsRoot: projects, cwdCandidates: ['C:\\ws'] });
+  let scans = 0;
+  const scan = index.scan.bind(index);
+  index.scan = () => {
+    scans++;
+    return scan();
+  };
+  let changes = 0;
+  index.on('change', () => changes++);
+  const touchAndSync = (id) => {
+    index.touch(file(id), false);
+    clearTimeout(index.refreshTimer);
+    index.refreshTimer = undefined;
+    return index.sync();
+  };
+
+  fs.appendFileSync(file(A), `${line({ type: 'custom-title', customTitle: 'Átnevezve' })}\n`);
+  const future = new Date(Date.now() + 5000);
+  fs.utimesSync(file(A), future, future);
+  await touchAndSync(A);
+  assert.equal(index.sessions.get(A).title, 'Átnevezve');
+  assert.equal(index.sessions.get(A).mtime, Math.trunc(fs.statSync(file(A)).mtimeMs));
+
+  await touchAndSync(B);
+  assert.equal(changes, 1, 'an unchanged transcript is not a change');
+
+  fs.writeFileSync(file(C), `${user('harmadik')}\n`);
+  await touchAndSync(C);
+  assert.equal(index.sessions.get(C).title, 'harmadik');
+  assert.equal(scans, 0, 'no full scan so far');
+
+  // A deleted transcript is settled by a full scan.
+  fs.unlinkSync(file(B));
+  await touchAndSync(B);
+  assert.equal(index.sessions.has(B), false);
+  assert.equal(scans, 1);
+  assert.deepEqual([...index.sessions.keys()].sort(), [A, C]);
+  index.dispose();
+});
+
+test('SessionFeed sends the full list once, then only the changes', () => {
+  const s = (id, title, mtime, extra = {}) => ({ id, title, mtime, file: `${id}.jsonl`, gitBranch: 'main', firstPrompt: 'kérés', ...extra });
+  const feed = new SessionFeed();
+  const first = feed.update([s('a', 'A', 1), s('b', 'B', 1)]);
+  assert.deepEqual(first.full.map((x) => [x.id, x.branch, x.prompt]), [['a', 'main', 'kérés'], ['b', 'main', 'kérés']]);
+  assert.equal(feed.update([s('a', 'A', 1), s('b', 'B', 1)]), null, 'nothing changed');
+  const delta = feed.update([s('a', 'A', 2), s('c', 'C', 1)]);
+  assert.deepEqual(delta.upsert.map((x) => x.id), ['a', 'c']);
+  assert.deepEqual(delta.remove, ['b']);
+  assert.deepEqual(feed.update([s('a', 'A', 2, { gitBranch: 'dev' }), s('c', 'C', 1)]).upsert.map((x) => x.id), ['a'], 'branch change');
+  feed.reset();
+  assert.equal(feed.update([s('a', 'A', 2)]).full.length, 1, 'full list after a reset');
 });
 
 // ---------------------------------------------------------------- GroupStore
