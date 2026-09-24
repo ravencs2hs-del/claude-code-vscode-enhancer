@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+<meta charset="UTF-8">
+<title>Claude csoportok – előnézet</title>
+<!-- Browser preview of the webview with VS Code "Dark Modern" colors and a mock extension host. -->
+<style>
+  :root {
+    --vscode-font-family: -apple-system, BlinkMacSystemFont, "Segoe WPC", "Segoe UI", system-ui, sans-serif;
+    --vscode-font-size: 13px;
+    --vscode-font-weight: normal;
+    --vscode-foreground: #cccccc;
+    --vscode-descriptionForeground: #9d9d9d;
+    --vscode-icon-foreground: #cccccc;
+    --vscode-focusBorder: #0078d4;
+    --vscode-sideBar-background: #181818;
+    --vscode-list-hoverBackground: #2a2d2e;
+    --vscode-list-activeSelectionBackground: #04395e;
+    --vscode-list-activeSelectionForeground: #ffffff;
+    --vscode-list-inactiveSelectionBackground: #37373d;
+    --vscode-list-focusOutline: #0078d4;
+    --vscode-list-dropBackground: #383b3d;
+    --vscode-list-dropBetweenBackground: #0078d4;
+    --vscode-badge-background: #616161;
+    --vscode-badge-foreground: #f8f8f8;
+    --vscode-input-background: #313131;
+    --vscode-input-foreground: #cccccc;
+    --vscode-input-border: #3c3c3c;
+    --vscode-input-placeholderForeground: #989898;
+    --vscode-tree-indentGuidesStroke: #585858;
+    --vscode-toolbar-hoverBackground: rgba(90, 93, 94, 0.31);
+    --vscode-widget-border: #313131;
+    --vscode-sideBarSectionHeader-border: #2b2b2b;
+    --vscode-textLink-foreground: #4daafc;
+    --vscode-charts-red: #f14c4c;
+    --vscode-charts-orange: #d18616;
+    --vscode-charts-yellow: #cca700;
+    --vscode-charts-green: #89d185;
+    --vscode-charts-blue: #3794ff;
+    --vscode-charts-purple: #b180d7;
+    --vscode-terminal-ansiBrightMagenta: #d670d6;
+    --vscode-editor-findMatchHighlightBackground: rgba(234, 92, 0, 0.33);
+    --vscode-editorWidget-background: #202020;
+  }
+  html { background: #181818; }
+  html, body { width: var(--preview-width, 320px) !important; height: var(--preview-height, 520px) !important; }
+</style>
+<link rel="stylesheet" href="../media/view.css">
+</head>
+<body class="vscode-dark">
+<div class="toolbar">
+  <label class="search">
+    <svg class="ico" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><circle cx="7" cy="7" r="4.25"/><path d="M10.25 10.25 13.5 13.5"/></svg>
+    <input id="search" type="text" placeholder="Keresés…" aria-label="Keresés a session-ök között" spellcheck="false" autocomplete="off">
+    <button id="clear" class="icon-btn" type="button" title="Keresés törlése" aria-label="Keresés törlése" hidden>
+      <svg class="ico" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M4.5 4.5l7 7M11.5 4.5l-7 7"/></svg>
+    </button>
+  </label>
+  <button id="newSession" class="new-session" type="button" title="Új Claude Code session" aria-label="Új session">
+    <svg class="ico" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M8 3.5v9M3.5 8h9"/></svg>
+    <span class="label">Új session</span>
+  </button>
+</div>
+<div id="tree" role="tree" aria-label="Claude Code csoportok" aria-multiselectable="true"></div>
+
+<script>window.module = { exports: {} };</script>
+<script src="../src/groupOps.js"></script>
+<script>
+  const ops = window.module.exports;
+  const params = new URLSearchParams(location.search);
+  const now = Date.now();
+  const min = 60000;
+  const session = (id, title, ago, extra) => Object.assign({ id, title, mtime: now - ago, createdAt: now - ago - 3600000, branch: 'main', prompt: undefined, worktree: false }, extra);
+  const host = {
+    log: [],
+    savedState: undefined,
+    state: {
+      loading: false,
+      workspace: 'claude-code-testing',
+      ungroupedCollapsed: false,
+      groups: [
+        { id: 'g-docs', name: 'Dokumentáció', color: null, collapsed: false, sessionIds: ['s1', 's2'] },
+        { id: 'g-test', name: 'Teszt', color: 'green', collapsed: false, sessionIds: ['s3'] },
+        { id: 'g-idea', name: 'Ötletek', color: 'purple', collapsed: true, sessionIds: ['s4'] },
+      ],
+      sessions: [
+        session('s1', 'YGX fájl dokumentáció', 125 * min),
+        session('s2', 'Docs és bugs mappa létrehozása', 26 * 60 * min, { prompt: 'hozz létre egy docs és egy bugs mappát' }),
+        session('s3', 'Unit tesztek a parserhez', 40 * min),
+        session('s4', 'Bluetooth widget gyorsan', 3 * 24 * 60 * min),
+        session('s5', 'Claude VS Code extension grouping', 0.5 * min),
+        session('s6', 'ViewModel és slider javítás', 5 * 60 * min, { worktree: true }),
+        session('s7', 'GTA 6 játék fejlesztés', 9 * 24 * 60 * min),
+        session('s8', 'Útmutató hatékony kódolási instrukciókhoz', 50 * 24 * 60 * min),
+      ],
+      settings: {
+        prefix: params.get('prefix') || 'tree',
+        customPrefix: params.get('custom') || '»',
+        indent: Number(params.get('indent') || 12),
+        guide: params.get('guide') !== '0',
+        timestamps: params.get('time') !== '0',
+        order: params.get('order') || 'manual',
+        ungrouped: params.get('ungrouped') || 'bottom',
+        singleClick: true,
+      },
+    },
+    ack: 0,
+    latency: Number(params.get('latency') || 5),
+    post() {
+      window.postMessage(JSON.parse(JSON.stringify(Object.assign({ type: 'state', ack: host.ack }, host.state))), '*');
+    },
+    updateGroups(fn) {
+      host.state.groups = fn(host.state.groups);
+    },
+    handle(m) {
+      const known = (id) => host.state.sessions.some((s) => s.id === id);
+      if (Number.isInteger(m.seq)) host.ack = m.seq;
+      switch (m.type) {
+        case 'ready': host.ack = 0; host.post(); break;
+        case 'toggleGroup': host.updateGroups((g) => ops.setCollapsed(g, m.id, m.collapsed)); break;
+        case 'toggleUngrouped': host.state.ungroupedCollapsed = m.collapsed; break;
+        case 'moveGroup': host.updateGroups((g) => ops.moveGroupBefore(g, m.id, m.beforeId || null)); break;
+        case 'moveGroupBy': host.updateGroups((g) => ops.moveGroupBy(g, m.id, m.delta)); break;
+        case 'moveSessions': host.updateGroups((g) => ops.assignSessions(g, m.ids, m.groupId || null, m.beforeId || null)); break;
+        case 'moveSessionBy': host.updateGroups((g) => ops.moveSessionBy(g, m.id, m.delta, known)); break;
+        case 'renameGroup': host.updateGroups((g) => ops.renameGroup(g, m.id, m.name)); break;
+        case 'createGroup': {
+          const id = `g-${Math.random().toString(36).slice(2, 8)}`;
+          host.updateGroups((g) => ops.createGroup(g, { id, name: m.name, sessionIds: m.sessionIds || [] }));
+          window.postMessage({ type: 'focus', key: `g:${id}` }, '*');
+          break;
+        }
+        case 'newSession': {
+          // Simulates the Claude Code panel: the session shows up after the first message.
+          host.state.pendingGroupId = m.groupId || null;
+          host.post();
+          setTimeout(() => {
+            const id = `n${Date.now()}`;
+            host.state.sessions.push(session(id, 'Új session a gombbal', 0));
+            if (host.state.pendingGroupId) host.updateGroups((g) => ops.assignSessions(g, [id], host.state.pendingGroupId, null));
+            host.state.pendingGroupId = null;
+            host.post();
+          }, 1500);
+          break;
+        }
+        case 'cancelPending': host.state.pendingGroupId = null; host.post(); break;
+        case 'deleteGroup': host.updateGroups((g) => ops.deleteGroup(g, m.id)); host.post(); break;
+        default: break;
+      }
+      if (Number.isInteger(m.seq)) host.post();
+    },
+  };
+  window.host = host;
+  window.acquireVsCodeApi = () => ({
+    postMessage: (m) => { host.log.push(m); setTimeout(() => host.handle(m), host.latency); },
+    getState: () => host.savedState,
+    setState: (s) => { host.savedState = s; },
+  });
+</script>
+<script src="../media/view.js"></script>
+</body>
+</html>

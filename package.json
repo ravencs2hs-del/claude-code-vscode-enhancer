@@ -1,0 +1,497 @@
+{
+  "name": "claude-code-groups",
+  "displayName": "Claude Code Csoportok",
+  "description": "Komolyabb session-csoportosítás a Claude Code-hoz: behúzott, előtaggal jelölt elemek, húzással átrendezhető csoportok, színek és keresés.",
+  "version": "1.1.0",
+  "publisher": "zaza",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ravencs2hs-del/claude-code-vscode-enhancer.git"
+  },
+  "engines": {
+    "vscode": "^1.94.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "keywords": [
+    "claude",
+    "claude code",
+    "session",
+    "groups",
+    "csoportok"
+  ],
+  "main": "./extension.js",
+  "extensionKind": [
+    "workspace"
+  ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": true
+    }
+  },
+  "activationEvents": [],
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "claudeGroups",
+          "title": "Claude csoportok",
+          "icon": "media/activity.svg"
+        }
+      ]
+    },
+    "views": {
+      "claudeGroups": [
+        {
+          "type": "webview",
+          "id": "claudeGroups.sessions",
+          "name": "Claude csoportok",
+          "icon": "media/activity.svg",
+          "contextualTitle": "Claude csoportok"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "claudeGroups.newSession",
+        "title": "Új session",
+        "category": "Claude csoportok",
+        "icon": "$(add)"
+      },
+      {
+        "command": "claudeGroups.group.newSession",
+        "title": "Új session ebben a csoportban",
+        "category": "Claude csoportok"
+      },
+      {
+        "command": "claudeGroups.newGroup",
+        "title": "Új csoport",
+        "category": "Claude csoportok",
+        "icon": "$(new-folder)"
+      },
+      {
+        "command": "claudeGroups.refresh",
+        "title": "Frissítés",
+        "category": "Claude csoportok",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "claudeGroups.collapseAll",
+        "title": "Összes csoport összecsukása",
+        "category": "Claude csoportok",
+        "icon": "$(collapse-all)"
+      },
+      {
+        "command": "claudeGroups.expandAll",
+        "title": "Összes csoport kinyitása",
+        "category": "Claude csoportok",
+        "icon": "$(expand-all)"
+      },
+      {
+        "command": "claudeGroups.focusSearch",
+        "title": "Keresés a session-ök között",
+        "category": "Claude csoportok",
+        "icon": "$(search)"
+      },
+      {
+        "command": "claudeGroups.importFromClaude",
+        "title": "Csoportok importálása a Claude Code-ból…",
+        "category": "Claude csoportok"
+      },
+      {
+        "command": "claudeGroups.openSettings",
+        "title": "Beállítások",
+        "category": "Claude csoportok",
+        "icon": "$(settings-gear)"
+      },
+      {
+        "command": "claudeGroups.group.rename",
+        "title": "Átnevezés",
+        "category": "Claude csoportok"
+      },
+      {
+        "command": "claudeGroups.group.setColor",
+        "title": "Szín…",
+        "category": "Claude csoportok"
+      },
+      {
+        "command": "claudeGroups.group.moveUp",
+        "title": "Mozgatás feljebb",
+        "category": "Claude csoportok"
+      },
+      {
+        "command": "claudeGroups.group.moveDown",
+        "title": "Mozgatás lejjebb",
+        "category": "Claude csoportok"
+      },
+      {
+        "command": "claudeGroups.group.moveTop",
+        "title": "Mozgatás a legtetejére",
+        "category": "Claude csoportok"
+      },
+      {
+        "command": "claudeGroups.group.moveBottom",
+        "title": "Mozgatás a legaljára",
+        "category": "Claude csoportok"
+      },
+      {
+        "command": "claudeGroups.group.delete",
+        "title": "Csoport törlése",
+        "category": "Claude csoportok"
+      },
+      {
+        "command": "claudeGroups.session.open",
+        "title": "Megnyitás",
+        "category": "Claude csoportok"
+      },
+      {
+        "command": "claudeGroups.session.openInTerminal",
+        "title": "Folytatás terminálban",
+        "category": "Claude csoportok"
+      },
+      {
+        "command": "claudeGroups.session.moveToGroup",
+        "title": "Áthelyezés csoportba…",
+        "category": "Claude csoportok"
+      },
+      {
+        "command": "claudeGroups.session.newGroupFromSelection",
+        "title": "Új csoport a kijelöltekből",
+        "category": "Claude csoportok"
+      },
+      {
+        "command": "claudeGroups.session.removeFromGroup",
+        "title": "Eltávolítás a csoportból",
+        "category": "Claude csoportok"
+      },
+      {
+        "command": "claudeGroups.session.copyId",
+        "title": "Session ID másolása",
+        "category": "Claude csoportok"
+      },
+      {
+        "command": "claudeGroups.session.reveal",
+        "title": "Megjelenítés a fájlkezelőben",
+        "category": "Claude csoportok"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "claudeGroups.newSession",
+          "when": "view == claudeGroups.sessions",
+          "group": "navigation@0"
+        },
+        {
+          "command": "claudeGroups.newGroup",
+          "when": "view == claudeGroups.sessions",
+          "group": "navigation@1"
+        },
+        {
+          "command": "claudeGroups.collapseAll",
+          "when": "view == claudeGroups.sessions",
+          "group": "navigation@2"
+        },
+        {
+          "command": "claudeGroups.refresh",
+          "when": "view == claudeGroups.sessions",
+          "group": "navigation@3"
+        },
+        {
+          "command": "claudeGroups.expandAll",
+          "when": "view == claudeGroups.sessions",
+          "group": "1_view@1"
+        },
+        {
+          "command": "claudeGroups.focusSearch",
+          "when": "view == claudeGroups.sessions",
+          "group": "1_view@2"
+        },
+        {
+          "command": "claudeGroups.importFromClaude",
+          "when": "view == claudeGroups.sessions",
+          "group": "2_import@1"
+        },
+        {
+          "command": "claudeGroups.openSettings",
+          "when": "view == claudeGroups.sessions",
+          "group": "3_settings@1"
+        }
+      ],
+      "webview/context": [
+        {
+          "command": "claudeGroups.group.newSession",
+          "when": "webviewId == 'claudeGroups.sessions' && webviewSection == 'group'",
+          "group": "0_session@1"
+        },
+        {
+          "command": "claudeGroups.newSession",
+          "when": "webviewId == 'claudeGroups.sessions' && webviewSection != 'group' && webviewSection != 'session'",
+          "group": "0_session@1"
+        },
+        {
+          "command": "claudeGroups.session.open",
+          "when": "webviewId == 'claudeGroups.sessions' && webviewSection == 'session'",
+          "group": "1_open@1"
+        },
+        {
+          "command": "claudeGroups.session.openInTerminal",
+          "when": "webviewId == 'claudeGroups.sessions' && webviewSection == 'session'",
+          "group": "1_open@2"
+        },
+        {
+          "command": "claudeGroups.session.moveToGroup",
+          "when": "webviewId == 'claudeGroups.sessions' && webviewSection == 'session'",
+          "group": "2_group@1"
+        },
+        {
+          "command": "claudeGroups.session.newGroupFromSelection",
+          "when": "webviewId == 'claudeGroups.sessions' && webviewSection == 'session'",
+          "group": "2_group@2"
+        },
+        {
+          "command": "claudeGroups.session.removeFromGroup",
+          "when": "webviewId == 'claudeGroups.sessions' && webviewSection == 'session' && grouped",
+          "group": "2_group@3"
+        },
+        {
+          "command": "claudeGroups.session.copyId",
+          "when": "webviewId == 'claudeGroups.sessions' && webviewSection == 'session'",
+          "group": "3_misc@1"
+        },
+        {
+          "command": "claudeGroups.session.reveal",
+          "when": "webviewId == 'claudeGroups.sessions' && webviewSection == 'session'",
+          "group": "3_misc@2"
+        },
+        {
+          "command": "claudeGroups.group.rename",
+          "when": "webviewId == 'claudeGroups.sessions' && webviewSection == 'group'",
+          "group": "1_edit@1"
+        },
+        {
+          "command": "claudeGroups.group.setColor",
+          "when": "webviewId == 'claudeGroups.sessions' && webviewSection == 'group'",
+          "group": "1_edit@2"
+        },
+        {
+          "command": "claudeGroups.group.moveUp",
+          "when": "webviewId == 'claudeGroups.sessions' && webviewSection == 'group' && canMoveUp",
+          "group": "2_move@1"
+        },
+        {
+          "command": "claudeGroups.group.moveDown",
+          "when": "webviewId == 'claudeGroups.sessions' && webviewSection == 'group' && canMoveDown",
+          "group": "2_move@2"
+        },
+        {
+          "command": "claudeGroups.group.moveTop",
+          "when": "webviewId == 'claudeGroups.sessions' && webviewSection == 'group' && canMoveUp",
+          "group": "2_move@3"
+        },
+        {
+          "command": "claudeGroups.group.moveBottom",
+          "when": "webviewId == 'claudeGroups.sessions' && webviewSection == 'group' && canMoveDown",
+          "group": "2_move@4"
+        },
+        {
+          "command": "claudeGroups.newGroup",
+          "when": "webviewId == 'claudeGroups.sessions' && webviewSection != 'session'",
+          "group": "3_new@1"
+        },
+        {
+          "command": "claudeGroups.group.delete",
+          "when": "webviewId == 'claudeGroups.sessions' && webviewSection == 'group'",
+          "group": "4_delete@1"
+        },
+        {
+          "command": "claudeGroups.collapseAll",
+          "when": "webviewId == 'claudeGroups.sessions' && webviewSection != 'session'",
+          "group": "5_view@1"
+        },
+        {
+          "command": "claudeGroups.expandAll",
+          "when": "webviewId == 'claudeGroups.sessions' && webviewSection != 'session'",
+          "group": "5_view@2"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "claudeGroups.group.newSession",
+          "when": "false"
+        },
+        {
+          "command": "claudeGroups.group.rename",
+          "when": "false"
+        },
+        {
+          "command": "claudeGroups.group.setColor",
+          "when": "false"
+        },
+        {
+          "command": "claudeGroups.group.moveUp",
+          "when": "false"
+        },
+        {
+          "command": "claudeGroups.group.moveDown",
+          "when": "false"
+        },
+        {
+          "command": "claudeGroups.group.moveTop",
+          "when": "false"
+        },
+        {
+          "command": "claudeGroups.group.moveBottom",
+          "when": "false"
+        },
+        {
+          "command": "claudeGroups.group.delete",
+          "when": "false"
+        },
+        {
+          "command": "claudeGroups.session.open",
+          "when": "false"
+        },
+        {
+          "command": "claudeGroups.session.openInTerminal",
+          "when": "false"
+        },
+        {
+          "command": "claudeGroups.session.moveToGroup",
+          "when": "false"
+        },
+        {
+          "command": "claudeGroups.session.newGroupFromSelection",
+          "when": "false"
+        },
+        {
+          "command": "claudeGroups.session.removeFromGroup",
+          "when": "false"
+        },
+        {
+          "command": "claudeGroups.session.copyId",
+          "when": "false"
+        },
+        {
+          "command": "claudeGroups.session.reveal",
+          "when": "false"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Claude Code Csoportok",
+      "properties": {
+        "claudeGroups.itemPrefix": {
+          "type": "string",
+          "enum": [
+            "tree",
+            "bullet",
+            "arrow",
+            "dash",
+            "number",
+            "custom",
+            "none"
+          ],
+          "enumDescriptions": [
+            "Faszerkezet-vonalak (├─ └─)",
+            "Pont (•)",
+            "Nyíl (›)",
+            "Gondolatjel (–)",
+            "Sorszám (1. 2. 3.)",
+            "Saját előtag (claudeGroups.customPrefix)",
+            "Nincs előtag"
+          ],
+          "default": "tree",
+          "description": "A csoportokon belüli session-ök előtagja."
+        },
+        "claudeGroups.customPrefix": {
+          "type": "string",
+          "default": "»",
+          "maxLength": 8,
+          "description": "Saját előtag, ha a claudeGroups.itemPrefix értéke „custom”."
+        },
+        "claudeGroups.itemIndent": {
+          "type": "number",
+          "default": 12,
+          "minimum": 0,
+          "maximum": 64,
+          "description": "A csoport elemeinek extra bal oldali behúzása pixelben (a csoport nevéhez képest)."
+        },
+        "claudeGroups.showIndentGuide": {
+          "type": "boolean",
+          "default": true,
+          "description": "Függőleges vezetővonal a csoportok elemei mellett (a „tree” előtagnál mindig látszik)."
+        },
+        "claudeGroups.showTimestamps": {
+          "type": "boolean",
+          "default": true,
+          "description": "Az utolsó aktivitás idejének megjelenítése a session-ök mellett."
+        },
+        "claudeGroups.sessionOrder": {
+          "type": "string",
+          "enum": [
+            "manual",
+            "recent",
+            "name"
+          ],
+          "enumDescriptions": [
+            "Kézi sorrend (húzással rendezhető)",
+            "Legutóbb aktív elöl",
+            "Név szerint"
+          ],
+          "default": "manual",
+          "description": "A session-ök sorrendje a csoportokon belül."
+        },
+        "claudeGroups.ungroupedPosition": {
+          "type": "string",
+          "enum": [
+            "bottom",
+            "top",
+            "hidden"
+          ],
+          "enumDescriptions": [
+            "A csoportok alatt",
+            "A csoportok fölött",
+            "Elrejtve"
+          ],
+          "default": "bottom",
+          "description": "Hol jelenjenek meg a csoportba nem sorolt session-ök."
+        },
+        "claudeGroups.openOnSingleClick": {
+          "type": "boolean",
+          "default": true,
+          "description": "Egy kattintással nyíljon meg a session (különben dupla kattintással)."
+        },
+        "claudeGroups.openWith": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "panel",
+            "terminal"
+          ],
+          "enumDescriptions": [
+            "Claude Code panel, ha telepítve van a Claude Code extension (és nincs bekapcsolva a claudeCode.useTerminal), különben terminál",
+            "Mindig a Claude Code extension panelje",
+            "Mindig a sima Claude Code CLI (claude --resume) a VS Code termináljában"
+          ],
+          "default": "auto",
+          "description": "Hol nyíljon meg egy session."
+        },
+        "claudeGroups.claudeCommand": {
+          "type": "string",
+          "default": "",
+          "scope": "machine",
+          "description": "A claude futtatható fájl elérési útja a terminálos megnyitáshoz. Üresen: PATH, majd a Claude Code extension és a Claude desktop app saját claude binárisa."
+        },
+        "claudeGroups.claudeConfigDir": {
+          "type": "string",
+          "default": "",
+          "scope": "machine",
+          "description": "A Claude konfigurációs mappája (alapértelmezés: CLAUDE_CONFIG_DIR vagy ~/.claude)."
+        }
+      }
+    }
+  }
+}
