@@ -5,6 +5,15 @@ Komolyabb session-csoportosítás a **Claude Code for VS Code** mellé. Saját o
 csoportokba rendezhetők. Egy kattintással ugyanúgy a Claude Code-ban nyílnak meg, mint a
 hivatalos listából.
 
+<p>
+  <img src="docs/overview.png" width="320" alt="Csoportok behúzott, fa-vonalas session-ökkel">
+  <img src="docs/new-session.png" width="320" alt="Új session indítása egy csoportba">
+</p>
+
+| Csoport áthúzása egy másik fölé | Session húzása csoportba vagy új csoportba |
+| --- | --- |
+| <img src="docs/drag-group.png" width="320" alt="Csoport átrendezése húzással"> | <img src="docs/drag-session.png" width="320" alt="Session húzása"> |
+
 ## Mit tud
 
 - **Átrendezhető csoportok**: húzd a csoportot egy másik fölé vagy alá. Kék vonal mutatja,

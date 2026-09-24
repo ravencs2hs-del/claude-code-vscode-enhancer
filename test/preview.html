@@ -41,6 +41,10 @@
     --vscode-terminal-ansiBrightMagenta: #d670d6;
     --vscode-editor-findMatchHighlightBackground: rgba(234, 92, 0, 0.33);
     --vscode-editorWidget-background: #202020;
+    --vscode-button-background: #0078d4;
+    --vscode-button-foreground: #ffffff;
+    --vscode-button-hoverBackground: #026ec1;
+    --vscode-button-border: rgba(255, 255, 255, 0.07);
   }
   html { background: #181818; }
   html, body { width: var(--preview-width, 320px) !important; height: var(--preview-height, 520px) !important; }
@@ -106,6 +110,33 @@
     },
     ack: 0,
     latency: Number(params.get('latency') || 5),
+    // Placeholder project used for the README screenshots (?demo=1).
+    demo() {
+      const h = 60 * min;
+      host.state.workspace = 'webshop';
+      host.state.groups = [
+        { id: 'g-front', name: 'Webshop frontend', color: 'blue', collapsed: false, sessionIds: ['d1', 'd2', 'd3'] },
+        { id: 'g-back', name: 'API és backend', color: 'green', collapsed: false, sessionIds: ['d4', 'd5'] },
+        { id: 'g-bugs', name: 'Bugfixek', color: 'red', collapsed: false, sessionIds: ['d6', 'd7'] },
+        { id: 'g-docs', name: 'Dokumentáció', color: null, collapsed: true, sessionIds: ['d8'] },
+        { id: 'g-idea', name: 'Ötletek', color: 'purple', collapsed: true, sessionIds: ['d9', 'd10'] },
+      ];
+      host.state.sessions = [
+        session('d1', 'Kosár oldal újratervezése', 0.4 * min),
+        session('d2', 'Termékszűrő lassúság javítása', 3 * h),
+        session('d3', 'Dark mode bevezetése', 26 * h),
+        session('d4', 'Rendelés-API hibakezelés', 50 * min),
+        session('d5', 'Adatbázis migráció v3', 4 * 24 * h, { worktree: true }),
+        session('d6', 'Bejelentkezési hiba Safariban', 2 * h),
+        session('d7', 'Duplikált e-mail értesítések', 2 * 24 * h),
+        session('d8', 'API dokumentáció frissítése', 8 * 24 * h),
+        session('d9', 'Kuponrendszer terv', 12 * 24 * h),
+        session('d10', 'Ajánlómotor prototípus', 20 * 24 * h),
+        session('d11', 'CI pipeline gyorsítása', 20 * min),
+        session('d12', 'README frissítése', 6 * h),
+        session('d13', 'Tesztlefedettség javítása', 3 * 24 * h),
+      ];
+    },
     post() {
       window.postMessage(JSON.parse(JSON.stringify(Object.assign({ type: 'state', ack: host.ack }, host.state))), '*');
     },
@@ -150,6 +181,7 @@
       if (Number.isInteger(m.seq)) host.post();
     },
   };
+  if (params.get('demo') === '1') host.demo();
   window.host = host;
   window.acquireVsCodeApi = () => ({
     postMessage: (m) => { host.log.push(m); setTimeout(() => host.handle(m), host.latency); },
@@ -158,5 +190,6 @@
   });
 </script>
 <script src="../media/view.js"></script>
+<script src="shots.js"></script>
 </body>
 </html>
