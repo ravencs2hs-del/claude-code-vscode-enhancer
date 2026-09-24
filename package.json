@@ -1,8 +1,8 @@
 {
   "name": "claude-code-groups",
-  "displayName": "Claude Code Csoportok",
-  "description": "Komolyabb session-csoportosítás a Claude Code-hoz: behúzott, előtaggal jelölt elemek, húzással átrendezhető csoportok, színek és keresés.",
-  "version": "1.3.0",
+  "displayName": "%displayName%",
+  "description": "%description%",
+  "version": "1.4.0",
   "publisher": "zaza",
   "license": "MIT",
   "repository": {
@@ -18,9 +18,9 @@
   "keywords": [
     "claude",
     "claude code",
-    "session",
+    "sessions",
     "groups",
-    "csoportok"
+    "folders"
   ],
   "main": "./extension.js",
   "extensionKind": [
@@ -37,7 +37,7 @@
       "activitybar": [
         {
           "id": "claudeGroups",
-          "title": "Claude csoportok",
+          "title": "%view.title%",
           "icon": "media/activity.svg"
         }
       ]
@@ -47,144 +47,144 @@
         {
           "type": "webview",
           "id": "claudeGroups.sessions",
-          "name": "Claude csoportok",
+          "name": "%view.title%",
           "icon": "media/activity.svg",
-          "contextualTitle": "Claude csoportok"
+          "contextualTitle": "%view.title%"
         }
       ]
     },
     "commands": [
       {
         "command": "claudeGroups.newSession",
-        "title": "Új session",
-        "category": "Claude csoportok",
+        "title": "%command.newSession%",
+        "category": "%category%",
         "icon": "$(add)"
       },
       {
         "command": "claudeGroups.group.newSession",
-        "title": "Új session ebben a csoportban",
-        "category": "Claude csoportok"
+        "title": "%command.group.newSession%",
+        "category": "%category%"
       },
       {
         "command": "claudeGroups.newGroup",
-        "title": "Új csoport",
-        "category": "Claude csoportok",
+        "title": "%command.newGroup%",
+        "category": "%category%",
         "icon": "$(new-folder)"
       },
       {
         "command": "claudeGroups.refresh",
-        "title": "Frissítés",
-        "category": "Claude csoportok",
+        "title": "%command.refresh%",
+        "category": "%category%",
         "icon": "$(refresh)"
       },
       {
         "command": "claudeGroups.collapseAll",
-        "title": "Összes csoport összecsukása",
-        "category": "Claude csoportok",
+        "title": "%command.collapseAll%",
+        "category": "%category%",
         "icon": "$(collapse-all)"
       },
       {
         "command": "claudeGroups.expandAll",
-        "title": "Összes csoport kinyitása",
-        "category": "Claude csoportok",
+        "title": "%command.expandAll%",
+        "category": "%category%",
         "icon": "$(expand-all)"
       },
       {
         "command": "claudeGroups.focusSearch",
-        "title": "Keresés a session-ök között",
-        "category": "Claude csoportok",
+        "title": "%command.focusSearch%",
+        "category": "%category%",
         "icon": "$(search)"
       },
       {
         "command": "claudeGroups.importFromClaude",
-        "title": "Csoportok importálása a Claude Code-ból…",
-        "category": "Claude csoportok"
+        "title": "%command.importFromClaude%",
+        "category": "%category%"
       },
       {
         "command": "claudeGroups.openSettings",
-        "title": "Beállítások",
-        "category": "Claude csoportok",
+        "title": "%command.openSettings%",
+        "category": "%category%",
         "icon": "$(settings-gear)"
       },
       {
         "command": "claudeGroups.group.newSubgroup",
-        "title": "Új alcsoport",
-        "category": "Claude csoportok"
+        "title": "%command.group.newSubgroup%",
+        "category": "%category%"
       },
       {
         "command": "claudeGroups.group.moveToGroup",
-        "title": "Áthelyezés csoportba…",
-        "category": "Claude csoportok"
+        "title": "%command.group.moveToGroup%",
+        "category": "%category%"
       },
       {
         "command": "claudeGroups.group.rename",
-        "title": "Átnevezés",
-        "category": "Claude csoportok"
+        "title": "%command.group.rename%",
+        "category": "%category%"
       },
       {
         "command": "claudeGroups.group.setColor",
-        "title": "Szín…",
-        "category": "Claude csoportok"
+        "title": "%command.group.setColor%",
+        "category": "%category%"
       },
       {
         "command": "claudeGroups.group.moveUp",
-        "title": "Mozgatás feljebb",
-        "category": "Claude csoportok"
+        "title": "%command.group.moveUp%",
+        "category": "%category%"
       },
       {
         "command": "claudeGroups.group.moveDown",
-        "title": "Mozgatás lejjebb",
-        "category": "Claude csoportok"
+        "title": "%command.group.moveDown%",
+        "category": "%category%"
       },
       {
         "command": "claudeGroups.group.moveTop",
-        "title": "Mozgatás a legtetejére",
-        "category": "Claude csoportok"
+        "title": "%command.group.moveTop%",
+        "category": "%category%"
       },
       {
         "command": "claudeGroups.group.moveBottom",
-        "title": "Mozgatás a legaljára",
-        "category": "Claude csoportok"
+        "title": "%command.group.moveBottom%",
+        "category": "%category%"
       },
       {
         "command": "claudeGroups.group.delete",
-        "title": "Csoport törlése",
-        "category": "Claude csoportok"
+        "title": "%command.group.delete%",
+        "category": "%category%"
       },
       {
         "command": "claudeGroups.session.open",
-        "title": "Megnyitás",
-        "category": "Claude csoportok"
+        "title": "%command.session.open%",
+        "category": "%category%"
       },
       {
         "command": "claudeGroups.session.openInTerminal",
-        "title": "Folytatás terminálban",
-        "category": "Claude csoportok"
+        "title": "%command.session.openInTerminal%",
+        "category": "%category%"
       },
       {
         "command": "claudeGroups.session.moveToGroup",
-        "title": "Áthelyezés csoportba…",
-        "category": "Claude csoportok"
+        "title": "%command.session.moveToGroup%",
+        "category": "%category%"
       },
       {
         "command": "claudeGroups.session.newGroupFromSelection",
-        "title": "Új csoport a kijelöltekből",
-        "category": "Claude csoportok"
+        "title": "%command.session.newGroupFromSelection%",
+        "category": "%category%"
       },
       {
         "command": "claudeGroups.session.removeFromGroup",
-        "title": "Eltávolítás a csoportból",
-        "category": "Claude csoportok"
+        "title": "%command.session.removeFromGroup%",
+        "category": "%category%"
       },
       {
         "command": "claudeGroups.session.copyId",
-        "title": "Session ID másolása",
-        "category": "Claude csoportok"
+        "title": "%command.session.copyId%",
+        "category": "%category%"
       },
       {
         "command": "claudeGroups.session.reveal",
-        "title": "Megjelenítés a fájlkezelőben",
-        "category": "Claude csoportok"
+        "title": "%command.session.reveal%",
+        "category": "%category%"
       }
     ],
     "menus": {
@@ -409,8 +409,23 @@
       ]
     },
     "configuration": {
-      "title": "Claude Code Csoportok",
+      "title": "%config.title%",
       "properties": {
+        "claudeGroups.language": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "en",
+            "hu"
+          ],
+          "enumDescriptions": [
+            "%config.language.auto%",
+            "%config.language.en%",
+            "%config.language.hu%"
+          ],
+          "default": "auto",
+          "description": "%config.language.description%"
+        },
         "claudeGroups.itemPrefix": {
           "type": "string",
           "enum": [
@@ -423,39 +438,39 @@
             "none"
           ],
           "enumDescriptions": [
-            "Faszerkezet-vonalak (├─ └─)",
-            "Pont (•)",
-            "Nyíl (›)",
-            "Gondolatjel (–)",
-            "Sorszám (1. 2. 3.)",
-            "Saját előtag (claudeGroups.customPrefix)",
-            "Nincs előtag"
+            "%config.itemPrefix.tree%",
+            "%config.itemPrefix.bullet%",
+            "%config.itemPrefix.arrow%",
+            "%config.itemPrefix.dash%",
+            "%config.itemPrefix.number%",
+            "%config.itemPrefix.custom%",
+            "%config.itemPrefix.none%"
           ],
           "default": "tree",
-          "description": "A csoportokon belüli session-ök előtagja."
+          "description": "%config.itemPrefix.description%"
         },
         "claudeGroups.customPrefix": {
           "type": "string",
           "default": "»",
           "maxLength": 8,
-          "description": "Saját előtag, ha a claudeGroups.itemPrefix értéke „custom”."
+          "description": "%config.customPrefix.description%"
         },
         "claudeGroups.itemIndent": {
           "type": "number",
           "default": 12,
           "minimum": 0,
           "maximum": 64,
-          "description": "A csoport elemeinek extra bal oldali behúzása pixelben (a csoport nevéhez képest)."
+          "description": "%config.itemIndent.description%"
         },
         "claudeGroups.showIndentGuide": {
           "type": "boolean",
           "default": true,
-          "description": "Függőleges vezetővonal a csoportok elemei mellett (a „tree” előtagnál mindig látszik)."
+          "description": "%config.showIndentGuide.description%"
         },
         "claudeGroups.showTimestamps": {
           "type": "boolean",
           "default": true,
-          "description": "Az utolsó aktivitás idejének megjelenítése a session-ök mellett."
+          "description": "%config.showTimestamps.description%"
         },
         "claudeGroups.sessionOrder": {
           "type": "string",
@@ -465,12 +480,12 @@
             "name"
           ],
           "enumDescriptions": [
-            "Kézi sorrend (húzással rendezhető)",
-            "Legutóbb aktív elöl",
-            "Név szerint"
+            "%config.sessionOrder.manual%",
+            "%config.sessionOrder.recent%",
+            "%config.sessionOrder.name%"
           ],
           "default": "manual",
-          "description": "A session-ök sorrendje a csoportokon belül."
+          "description": "%config.sessionOrder.description%"
         },
         "claudeGroups.ungroupedPosition": {
           "type": "string",
@@ -480,17 +495,17 @@
             "hidden"
           ],
           "enumDescriptions": [
-            "A csoportok alatt",
-            "A csoportok fölött",
-            "Elrejtve"
+            "%config.ungroupedPosition.bottom%",
+            "%config.ungroupedPosition.top%",
+            "%config.ungroupedPosition.hidden%"
           ],
           "default": "bottom",
-          "description": "Hol jelenjenek meg a csoportba nem sorolt session-ök."
+          "description": "%config.ungroupedPosition.description%"
         },
         "claudeGroups.openOnSingleClick": {
           "type": "boolean",
           "default": true,
-          "description": "Egy kattintással nyíljon meg a session (különben dupla kattintással)."
+          "description": "%config.openOnSingleClick.description%"
         },
         "claudeGroups.openWith": {
           "type": "string",
@@ -500,24 +515,24 @@
             "terminal"
           ],
           "enumDescriptions": [
-            "Claude Code panel, ha telepítve van a Claude Code extension (és nincs bekapcsolva a claudeCode.useTerminal), különben terminál",
-            "Mindig a Claude Code extension panelje",
-            "Mindig a sima Claude Code CLI (claude --resume) a VS Code termináljában"
+            "%config.openWith.auto%",
+            "%config.openWith.panel%",
+            "%config.openWith.terminal%"
           ],
           "default": "auto",
-          "description": "Hol nyíljon meg egy session."
+          "description": "%config.openWith.description%"
         },
         "claudeGroups.claudeCommand": {
           "type": "string",
           "default": "",
           "scope": "machine",
-          "description": "A claude futtatható fájl elérési útja a terminálos megnyitáshoz. Üresen: PATH, majd a Claude Code extension és a Claude desktop app saját claude binárisa."
+          "description": "%config.claudeCommand.description%"
         },
         "claudeGroups.claudeConfigDir": {
           "type": "string",
           "default": "",
           "scope": "machine",
-          "description": "A Claude konfigurációs mappája (alapértelmezés: CLAUDE_CONFIG_DIR vagy ~/.claude)."
+          "description": "%config.claudeConfigDir.description%"
         }
       }
     }

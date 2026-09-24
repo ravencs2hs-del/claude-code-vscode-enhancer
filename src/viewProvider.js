@@ -4,6 +4,19 @@ const vscode = require('vscode');
 const crypto = require('crypto');
 const ops = require('./groupOps');
 const { SessionFeed } = require('./sessionFeed');
+const { webviewStrings } = require('./webviewStrings');
+
+const DEFAULT_LOCALES = { en: 'en-US', hu: 'hu-HU' };
+
+/** Dates and numbers: VS Code's own locale when it is in the same language, else the language's usual one. */
+function localeFor(language) {
+  const display = String(vscode.env.language || '');
+  return display.toLowerCase().split('-')[0] === language ? display : DEFAULT_LOCALES[language] || 'en-US';
+}
+
+function escapeAttr(text) {
+  return text.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
 
 const VIEW_ID = 'claudeGroups.sessions';
 const PREFIXES = ['tree', 'bullet', 'arrow', 'dash', 'number', 'custom', 'none'];
@@ -38,7 +51,8 @@ function readSettings() {
 }
 
 class GroupsViewProvider {
-  constructor({ extensionUri, store, index, log, openSession, workspaceName, pendingGroupId, cancelPending }) {
+  constructor({ extensionUri, store, index, log, openSession, workspaceName, pendingGroupId, cancelPending, translate }) {
+    this.translate = translate || (() => Object.assign((m) => m, { language: 'en' }));
     this.pendingGroupId = pendingGroupId || (() => null);
     this.cancelPending = cancelPending || (() => {});
     this.extensionUri = extensionUri;
@@ -90,6 +104,13 @@ class GroupsViewProvider {
   async reveal() {
     if (!this.view) await vscode.commands.executeCommand(`${VIEW_ID}.focus`);
     else this.view.show(false);
+  }
+
+  /** The language changed: the webview reloads with the new texts (and says 'ready' again). */
+  reloadHtml() {
+    if (!this.view) return;
+    this.ready = false;
+    this.view.webview.html = this.html(this.view.webview, vscode.Uri.joinPath(this.extensionUri, 'media'));
   }
 
   post(msg) {
@@ -255,30 +276,33 @@ class GroupsViewProvider {
       `img-src ${webview.cspSource} data:`,
       `font-src ${webview.cspSource}`,
     ].join('; ');
+    const t = this.translate();
+    // view.js puts these texts into the toolbar and uses them for everything it renders.
+    const l10n = Object.assign(webviewStrings(t), { lang: t.language, locale: localeFor(t.language) });
     return `<!DOCTYPE html>
-<html lang="hu">
+<html lang="${t.language}">
 <head>
 <meta charset="UTF-8">
 <meta http-equiv="Content-Security-Policy" content="${csp}">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="stylesheet" href="${css}">
-<title>Claude csoportok</title>
+<title>${escapeAttr(l10n.title)}</title>
 </head>
-<body>
+<body data-l10n="${escapeAttr(JSON.stringify(l10n))}">
 <div class="toolbar">
   <label class="search">
     <svg class="ico" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><circle cx="7" cy="7" r="4.25"/><path d="M10.25 10.25 13.5 13.5"/></svg>
-    <input id="search" type="text" placeholder="Keresés…" aria-label="Keresés a session-ök között" spellcheck="false" autocomplete="off">
-    <button id="clear" class="icon-btn" type="button" title="Keresés törlése" aria-label="Keresés törlése" hidden>
+    <input id="search" type="text" spellcheck="false" autocomplete="off">
+    <button id="clear" class="icon-btn" type="button" hidden>
       <svg class="ico" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M4.5 4.5l7 7M11.5 4.5l-7 7"/></svg>
     </button>
   </label>
-  <button id="newSession" class="new-session" type="button" title="Új Claude Code session" aria-label="Új session">
+  <button id="newSession" class="new-session" type="button">
     <svg class="ico" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M8 3.5v9M3.5 8h9"/></svg>
-    <span class="label">Új session</span>
+    <span class="label"></span>
   </button>
 </div>
-<div id="tree" role="tree" aria-label="Claude Code csoportok" aria-multiselectable="true" data-vscode-context='{"webviewSection":"empty","preventDefaultContextMenuItems":true}'></div>
+<div id="tree" role="tree" aria-multiselectable="true" data-vscode-context='{"webviewSection":"empty","preventDefaultContextMenuItems":true}'></div>
 <script nonce="${nonce}" src="${js}"></script>
 </body>
 </html>`;

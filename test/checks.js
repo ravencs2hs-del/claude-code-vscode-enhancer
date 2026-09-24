@@ -96,6 +96,13 @@
       eq(!!$('.row.header.add') && !!$('.sep') && !!$('.row.header.ungrouped'), true, 'add row, separator, ungrouped');
     });
 
+    await check('texts come from the host (English here)', () => {
+      eq([$('#search').placeholder, $('#newSession .label').textContent, $('#tree').getAttribute('aria-label')], ['Search…', 'New session', 'Claude Code groups']);
+      eq($('.row.header.ungrouped .name').textContent, 'Ungrouped');
+      eq($('.row.session[data-id="s5"] .time').textContent, 'now', 'relative time');
+      eq(document.documentElement.lang, 'en');
+    });
+
     await check('rows are stacked without gaps or overlaps', () => {
       const rows = $$('.vlist > *');
       for (let i = 1; i < rows.length; i++) {
@@ -238,7 +245,7 @@
       await until(() => group('g-docs').sessionIds.join() === 's5,s1,s2', 'host');
     });
 
-    await check('drag a session onto a group, then back to "Csoport nélkül"', async () => {
+    await check('drag a session onto a group, then back to "Ungrouped"', async () => {
       await dragTo($('.row.session[data-id="s6"]'), () => $('.row.header[data-id="g-test"]'));
       await until(() => group('g-test').sessionIds.includes('s6'), 'into the group');
       await dragTo($('.row.session[data-id="s6"]'), () => $('.row.header.ungrouped'));

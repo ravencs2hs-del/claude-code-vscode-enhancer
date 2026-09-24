@@ -14,6 +14,10 @@
   const $search = document.getElementById('search');
   const $clear = document.getElementById('clear');
 
+  // Texts in the chosen language (src/webviewStrings.js) plus `lang` and `locale`, from the host.
+  const L = readStrings();
+  const LOCALE = L.locale || 'en-US';
+
   const UNGROUPED_LIMIT = 30;
   const LIVE_MS = 2 * 60 * 1000;
   const GUIDE_X = 12;
@@ -57,6 +61,19 @@
   overlay.setAttribute('aria-hidden', 'true');
   indicator.setAttribute('aria-hidden', 'true');
   $tree.append($note, $list, overlay, indicator);
+
+  // Texts of the toolbar and the tree.
+  document.documentElement.lang = L.lang || 'en';
+  if (L.title) document.title = L.title;
+  $search.placeholder = L.search;
+  $search.setAttribute('aria-label', L.searchLabel);
+  $clear.title = L.clearSearch;
+  $clear.setAttribute('aria-label', L.clearSearch);
+  const $newSession = document.getElementById('newSession');
+  $newSession.title = L.newSessionTitle;
+  $newSession.setAttribute('aria-label', L.newSession);
+  $newSession.querySelector('.label').textContent = L.newSession;
+  $tree.setAttribute('aria-label', L.tree);
 
   const saved = vscode.getState() || {};
   const ui = {
@@ -111,6 +128,19 @@
     if (className) node.className = className;
     if (text != null) node.textContent = text;
     return node;
+  }
+
+  function readStrings() {
+    try {
+      return JSON.parse(document.body.dataset.l10n || '{}');
+    } catch {
+      return {};
+    }
+  }
+
+  /** Fills in the {0}, {1}… of a text. */
+  function fmt(text, ...args) {
+    return String(text).replace(/\{(\d+)\}/g, (m, i) => (args[i] === undefined ? m : String(args[i])));
   }
 
   const iconTemplates = {};
@@ -169,15 +199,16 @@
     return node;
   }
 
-  const dateFmt = new Intl.DateTimeFormat('hu-HU', { year: 'numeric', month: '2-digit', day: '2-digit' });
-  const dateTimeFmt = new Intl.DateTimeFormat('hu-HU', {
+  const dateFmt = new Intl.DateTimeFormat(LOCALE, { year: 'numeric', month: '2-digit', day: '2-digit' });
+  const monthDayFmt = new Intl.DateTimeFormat(LOCALE, { month: '2-digit', day: '2-digit' });
+  const dateTimeFmt = new Intl.DateTimeFormat(LOCALE, {
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
     hour: '2-digit',
     minute: '2-digit',
   });
-  const collator = new Intl.Collator('hu', { sensitivity: 'base' });
+  const collator = new Intl.Collator(LOCALE, { sensitivity: 'base' });
 
   function startOfDay(ms) {
     const d = new Date(ms);
@@ -185,34 +216,30 @@
     return d.getTime();
   }
 
-  function pad2(n) {
-    return String(n).padStart(2, '0');
-  }
-
   function relTime(ms, now) {
     const minutes = Math.floor(Math.max(0, now - ms) / 60000);
-    if (minutes < 1) return 'most';
-    if (minutes < 60) return `${minutes} perce`;
+    if (minutes < 1) return L.now;
+    if (minutes < 60) return fmt(L.minutesAgo, minutes);
     const hours = Math.floor(minutes / 60);
-    if (hours < 24) return `${hours} órája`;
+    if (hours < 24) return fmt(L.hoursAgo, hours);
     const days = Math.round((startOfDay(now) - startOfDay(ms)) / 86400000);
-    if (days <= 1) return 'tegnap';
-    if (days < 7) return `${days} napja`;
-    if (days < 35) return `${Math.floor(days / 7)} hete`;
+    if (days <= 1) return L.yesterday;
+    if (days < 7) return fmt(L.daysAgo, days);
+    if (days < 35) return days < 14 ? L.weekAgo : fmt(L.weeksAgo, Math.floor(days / 7));
     const d = new Date(ms);
-    if (d.getFullYear() === new Date(now).getFullYear()) return `${pad2(d.getMonth() + 1)}. ${pad2(d.getDate())}.`;
+    if (d.getFullYear() === new Date(now).getFullYear()) return monthDayFmt.format(d);
     return dateFmt.format(d);
   }
 
   function tooltip(s) {
     const lines = [s.title];
-    if (s.prompt && s.prompt !== s.title) lines.push(`Első kérés: ${s.prompt}`);
+    if (s.prompt && s.prompt !== s.title) lines.push(fmt(L.firstPrompt, s.prompt));
     lines.push('');
-    lines.push(`Utolsó aktivitás: ${dateTimeFmt.format(new Date(s.mtime))}`);
-    if (s.createdAt) lines.push(`Létrehozva: ${dateTimeFmt.format(new Date(s.createdAt))}`);
-    if (s.branch) lines.push(`Branch: ${s.branch}`);
-    if (s.worktree) lines.push('Worktree-ben futott');
-    lines.push(`ID: ${s.id}`);
+    lines.push(fmt(L.lastActivity, dateTimeFmt.format(new Date(s.mtime))));
+    if (s.createdAt) lines.push(fmt(L.created, dateTimeFmt.format(new Date(s.createdAt))));
+    if (s.branch) lines.push(fmt(L.branch, s.branch));
+    if (s.worktree) lines.push(L.ranInWorktree);
+    lines.push(fmt(L.id, s.id));
     return lines.join('\n');
   }
 
@@ -419,7 +446,7 @@
 
   /**
    * The tree as a flat list of rows. A row: { kind, key, height, nav?, head?, groupId?, … } where
-   * `head` is the index of the header of the group (or "Csoport nélkül" block) the row is in, and
+   * `head` is the index of the header of the group (or "Ungrouped" block) the row is in, and
    * a group header's `end` is the index after its last row, subgroups included. Rows inside a
    * group also carry how to draw them: `lvl` (nesting level of their guide line), `lineColor`,
    * `lastChild` and `outer` (the guide lines of the enclosing groups: { color, more }).
@@ -487,7 +514,7 @@
         createPlaced = true;
         out.push(Object.assign({ kind: 'create', key: 'create', height: ROW_H, groupId: g.id }, child()));
       }
-      if (empty) out.push(Object.assign({ kind: 'placeholder', key: `e:${g.id}`, height: ROW_H, groupId: g.id, text: 'Üres csoport – húzz ide session-t' }, child()));
+      if (empty) out.push(Object.assign({ kind: 'placeholder', key: `e:${g.id}`, height: ROW_H, groupId: g.id, text: L.emptyGroup }, child()));
       shown.forEach((s, i) => {
         out.push(Object.assign({ kind: 'session', key: `s:${s.id}`, height: ROW_H, nav: true, groupId: g.id, s, i, pos: kids.length + i + 1, size }, child()));
       });
@@ -509,7 +536,7 @@
       const rest = view.ungrouped.length - list.length;
       const n = list.length + (rest > 0 ? 1 : 0);
       const child = (i) => ({ head, lvl: 0, lineColor: null, outer: NO_GUIDES, lastChild: i === n - 1 });
-      if (!list.length) out.push(Object.assign({ kind: 'placeholder', key: 'e:u', height: ROW_H, text: 'Minden session csoportban van' }, child(0), { lastChild: true }));
+      if (!list.length) out.push(Object.assign({ kind: 'placeholder', key: 'e:u', height: ROW_H, text: L.allGrouped }, child(0), { lastChild: true }));
       for (let i = 0; i < list.length; i++) {
         const s = list[i];
         out.push(Object.assign({ kind: 'session', key: `s:${s.id}`, height: ROW_H, nav: true, groupId: null, s, i, pos: i + 1, size: list.length }, child(i)));
@@ -600,7 +627,7 @@
       if (r.kind === 'group') groupRows++;
       else if (r.kind === 'session') sessionRows++;
     }
-    send('rendered', { groups: groupRows, sessions: sessionRows, rows: navRows.length });
+    send('rendered', { groups: groupRows, sessions: sessionRows, rows: navRows.length, lang: L.lang });
   }
 
   /** Rebuilds the rows from the current view model (drag start: drop zone, dragged rows). */
@@ -611,9 +638,9 @@
   }
 
   function noteText() {
-    if (model.loading && !sessions.size) return 'Session-ök betöltése…';
-    if (!sessions.size && !model.groups.length) return `Ebben a munkaterületben (${model.workspace}) még nincs Claude Code session.`;
-    if (view.q && view.tree.every((g) => g.hidden) && !view.ungrouped.length) return `Nincs találat: „${ui.query.trim()}”`;
+    if (model.loading && !sessions.size) return L.loading;
+    if (!sessions.size && !model.groups.length) return fmt(L.noSessions, model.workspace);
+    if (view.q && view.tree.every((g) => g.hidden) && !view.ungrouped.length) return fmt(L.noMatch, ui.query.trim());
     return '';
   }
 
@@ -771,9 +798,9 @@
         el = placeholder(row.text);
         break;
       case 'pending':
-        el = placeholder('Új session – az első üzenet után ide kerül');
+        el = placeholder(L.pending);
         el.classList.add('pending');
-        el.title = 'Kattints, ha mégse ebbe a csoportba kerüljön';
+        el.title = L.pendingTitle;
         break;
       case 'more':
         el = moreRow(row);
@@ -792,7 +819,7 @@
         break;
       case 'dropzone':
         el = h('div', 'dropzone');
-        el.append(icon('plus'), h('span', null, 'Engedd el itt: új csoport'));
+        el.append(icon('plus'), h('span', null, L.dropNew));
         break;
       default:
         el = h('div');
@@ -874,17 +901,17 @@
     );
     header.append(twisty(row.expanded));
     if (renaming) {
-      header.append(nameInput(g.name, 'Csoport neve', (value) => commitRename(g.id, value)));
+      header.append(nameInput(g.name, L.groupName, (value) => commitRename(g.id, value)));
     } else {
       header.append(highlight(h('span', 'name'), g.name, view.q));
       const actions = h('span', 'actions');
       actions.append(
-        actionButton('new', 'Új session ebben a csoportban'),
-        actionButton('folder', 'Új alcsoport'),
-        actionButton('up', 'Feljebb (Alt+↑)', row.first),
-        actionButton('down', 'Lejjebb (Alt+↓)', row.last),
-        actionButton('edit', 'Átnevezés (F2)'),
-        actionButton('trash', 'Csoport törlése (Delete)'),
+        actionButton('new', L.actionNew),
+        actionButton('folder', L.actionFolder),
+        actionButton('up', L.actionUp, row.first),
+        actionButton('down', L.actionDown, row.last),
+        actionButton('edit', L.actionEdit),
+        actionButton('trash', L.actionTrash),
       );
       header.append(actions);
     }
@@ -919,7 +946,7 @@
       JSON.stringify({ webviewSection: 'session', sessionId: s.id, grouped: !!row.groupId, preventDefaultContextMenuItems: true }),
     );
     el.append(prefixFor(row.i), highlight(h('span', 'title'), s.title, view.q));
-    if (s.worktree) el.append(h('span', 'tag', 'worktree'));
+    if (s.worktree) el.append(h('span', 'tag', L.worktree));
     const meta = h('span', 'meta');
     meta.dataset.mtime = String(s.mtime);
     meta.append(h('span', 'live'), h('span', 'time'));
@@ -933,7 +960,7 @@
     const live = now - mtime < LIVE_MS;
     meta.classList.toggle('is-live', live);
     meta.lastChild.textContent = relTime(mtime, now);
-    meta.firstChild.title = live ? 'Nemrég aktív' : '';
+    meta.firstChild.title = live ? L.recent : '';
   }
 
   function placeholder(text) {
@@ -948,7 +975,7 @@
     more.tabIndex = -1;
     more.setAttribute('role', 'treeitem');
     more.setAttribute('aria-level', '2');
-    more.append(prefixFor(row.i), h('span', 'title', `+ még ${row.rest} session`));
+    more.append(prefixFor(row.i), h('span', 'title', row.rest === 1 ? L.moreOne : fmt(L.moreMany, row.rest)));
     return more;
   }
 
@@ -959,7 +986,7 @@
     treeItem(header, 1, row);
     header.setAttribute('aria-expanded', String(!row.collapsed));
     header.setAttribute('data-vscode-context', JSON.stringify({ webviewSection: 'ungrouped', preventDefaultContextMenuItems: true }));
-    header.append(twisty(!row.collapsed), h('span', 'name', 'Csoport nélkül'), h('span', 'count', String(row.count)));
+    header.append(twisty(!row.collapsed), h('span', 'name', L.ungrouped), h('span', 'count', String(row.count)));
     return header;
   }
 
@@ -970,13 +997,13 @@
     treeItem(el, 1, row);
     const plus = h('span', 'twisty');
     plus.append(icon('plus'));
-    el.append(plus, h('span', 'name', 'Új csoport'));
+    el.append(plus, h('span', 'name', L.newGroup));
     return el;
   }
 
   function createRowFor(ids, parentId) {
     const header = h('div', 'row header creating');
-    const label = parentId ? 'Az új alcsoport neve' : 'Az új csoport neve';
+    const label = parentId ? L.newSubgroupName : L.newGroupName;
     header.append(twisty(false), nameInput('', label, (value) => commitCreate(ids, value, parentId)));
     if (ids.length) header.append(h('span', 'count', String(ids.length)));
     return header;
@@ -1430,9 +1457,9 @@
       const g = model.groups.find((x) => x.id === drag.id);
       return g ? g.name : '';
     }
-    if (drag.ids.length > 1) return `${drag.ids.length} session`;
+    if (drag.ids.length > 1) return fmt(L.sessions, drag.ids.length);
     const s = view.byId.get(drag.ids[0]);
-    return s ? s.title : '1 session';
+    return s ? s.title : L.oneSession;
   }
 
   $tree.addEventListener('dragstart', (e) => {
@@ -1546,7 +1573,7 @@
     let head = -1;
     if (row) head = row.kind === 'group' || row.kind === 'ungrouped' ? i : row.head !== undefined ? row.head : -1;
     if (head < 0) {
-      // Below everything: the "Csoport nélkül" block reaches down to the bottom of the view.
+      // Below everything: the "Ungrouped" block reaches down to the bottom of the view.
       const u = indexByKey.get('u');
       if (u !== undefined && model.settings.ungrouped === 'bottom' && y > tops[u]) return ungroupTarget(u);
       return null;

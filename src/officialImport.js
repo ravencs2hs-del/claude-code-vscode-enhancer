@@ -23,7 +23,9 @@ function readOfficialGroupScopes(stateDbPath) {
   try {
     sqlite = require('node:sqlite');
   } catch {
-    throw new Error('A VS Code beépített SQLite modulja (node:sqlite) nem érhető el ebben a verzióban.');
+    const error = new Error('The built-in SQLite module of VS Code (node:sqlite) is not available in this version.');
+    error.code = 'NO_SQLITE';
+    throw error;
   }
   const db = new sqlite.DatabaseSync(stateDbPath, { readOnly: true });
   try {

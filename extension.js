@@ -11,21 +11,24 @@ const { SessionIndex } = require('./src/sessionIndex');
 const { stripWorktree } = require('./src/sessionMeta');
 const { readOfficialGroupScopes } = require('./src/officialImport');
 const { GroupsViewProvider, VIEW_ID } = require('./src/viewProvider');
+const { resolveLanguage, createTranslator } = require('./src/l10n');
 
 const OFFICIAL_EXTENSION = 'Anthropic.claude-code';
 const OFFICIAL_OPEN_COMMAND = 'claude-vscode.editor.open';
 
-const COLOR_CHOICES = [
-  { id: null, label: 'Nincs szín', theme: undefined },
-  { id: 'red', label: 'Piros', theme: 'charts.red' },
-  { id: 'orange', label: 'Narancs', theme: 'charts.orange' },
-  { id: 'yellow', label: 'Sárga', theme: 'charts.yellow' },
-  { id: 'green', label: 'Zöld', theme: 'charts.green' },
-  { id: 'blue', label: 'Kék', theme: 'charts.blue' },
-  { id: 'purple', label: 'Lila', theme: 'charts.purple' },
-  { id: 'pink', label: 'Rózsaszín', theme: 'terminal.ansiBrightMagenta' },
-  { id: 'gray', label: 'Szürke', theme: 'descriptionForeground' },
-];
+function colorChoices(t) {
+  return [
+    { id: null, label: t('No color'), theme: undefined },
+    { id: 'red', label: t('Red'), theme: 'charts.red' },
+    { id: 'orange', label: t('Orange'), theme: 'charts.orange' },
+    { id: 'yellow', label: t('Yellow'), theme: 'charts.yellow' },
+    { id: 'green', label: t('Green'), theme: 'charts.green' },
+    { id: 'blue', label: t('Blue'), theme: 'charts.blue' },
+    { id: 'purple', label: t('Purple'), theme: 'charts.purple' },
+    { id: 'pink', label: t('Pink'), theme: 'terminal.ansiBrightMagenta' },
+    { id: 'gray', label: t('Gray'), theme: 'descriptionForeground' },
+  ];
+}
 
 function expandHome(p) {
   return p.startsWith('~') ? path.join(os.homedir(), p.slice(1)) : p;
@@ -145,7 +148,13 @@ function claudeExecutable() {
 }
 
 function activate(context) {
-  const output = vscode.window.createOutputChannel('Claude Code Csoportok');
+  // Texts in the language of claudeGroups.language (default: VS Code's display language).
+  const l10nDir = path.join(context.extensionPath, 'l10n');
+  const makeTranslator = () =>
+    createTranslator(l10nDir, resolveLanguage(vscode.workspace.getConfiguration('claudeGroups').get('language'), vscode.env.language));
+  let t = makeTranslator();
+
+  const output = vscode.window.createOutputChannel(t('Claude Code Groups'));
   const log = (line) => output.appendLine(`[${new Date().toISOString()}] ${line}`);
   const storageDir = context.globalStorageUri.fsPath;
   fs.mkdirSync(storageDir, { recursive: true });
@@ -167,6 +176,7 @@ function activate(context) {
       pendingNew = undefined;
       provider.scheduleState();
     },
+    translate: () => t,
   });
 
   // A session started with a group's "+" in the Claude Code panel: the panel does not tell us
@@ -219,7 +229,10 @@ function activate(context) {
     }),
     vscode.workspace.onDidChangeConfiguration((e) => {
       if (e.affectsConfiguration('claudeGroups.claudeConfigDir') || e.affectsConfiguration('claudeCode.environmentVariables')) applyWorkspace();
-      if (e.affectsConfiguration('claudeGroups')) provider.scheduleState();
+      if (e.affectsConfiguration('claudeGroups.language')) {
+        t = makeTranslator();
+        provider.reloadHtml();
+      } else if (e.affectsConfiguration('claudeGroups')) provider.scheduleState();
     }),
   );
 
@@ -290,7 +303,7 @@ function activate(context) {
     // The CLI takes the id up front, so the session goes into its group right away.
     const id = crypto.randomUUID();
     if (group) store.updateGroups((g) => ops.assignSessions(g, [id], group.id, null));
-    runClaudeInTerminal(['--session-id', id], group ? `Claude: ${shorten(group.name, 32)}` : 'Claude: új session', currentRoot);
+    runClaudeInTerminal(['--session-id', id], group ? `Claude: ${shorten(group.name, 32)}` : t('Claude: new session'), currentRoot);
   }
 
   // ---------------------------------------------------------------- import
@@ -318,7 +331,9 @@ function activate(context) {
 
   function describe(groups) {
     const sessions = groups.reduce((n, g) => n + g.sessionIds.length, 0);
-    return `${groups.length} csoport, ${sessions} session`;
+    const groupText = groups.length === 1 ? t('1 group') : t('{0} groups', groups.length);
+    const sessionText = sessions === 1 ? t('1 session') : t('{0} sessions', sessions);
+    return `${groupText}, ${sessionText}`;
   }
 
   async function importFromClaude() {
@@ -326,12 +341,13 @@ function activate(context) {
     try {
       scopes = readOfficialScopes();
     } catch (e) {
-      vscode.window.showErrorMessage(`Nem sikerült beolvasni a Claude Code csoportjait: ${e.message || e}`);
+      const reason = e && e.code === 'NO_SQLITE' ? t('The built-in SQLite module of VS Code (node:sqlite) is not available in this version.') : (e && e.message) || e;
+      vscode.window.showErrorMessage(t('Could not read the groups of Claude Code: {0}', reason));
       return;
     }
     if (!scopes.length) {
       vscode.window.showInformationMessage(
-        'Nem találtam csoportokat a Claude Code extension tárolójában. (A VS Code néha csak később írja ki őket – egy újraindítás után próbáld újra.)',
+        t('No groups were found in the storage of the Claude Code extension. (VS Code sometimes writes them out later – try again after a restart.)'),
       );
       return;
     }
@@ -340,25 +356,27 @@ function activate(context) {
     if (!chosen) {
       const pick = await vscode.window.showQuickPick(
         scopes.map((s) => ({ label: path.basename(s.root) || s.root, description: describe(s.groups), detail: s.root, scope: s })),
-        { placeHolder: 'Ehhez a munkaterülethez nincs csoport a Claude Code-ban. Melyik mappa csoportjait veszed át?' },
+        { placeHolder: t('Claude Code has no groups for this workspace. Which folder’s groups do you want to import?') },
       );
       if (!pick) return;
       chosen = pick.scope;
     }
     let mode = 'merge';
     if (store.groups.length) {
+      const merge = t('Merge');
+      const replace = t('Replace');
       const answer = await vscode.window.showInformationMessage(
-        `Importálás a Claude Code-ból: ${describe(chosen.groups)}.`,
-        { modal: true, detail: 'Az egyesítés megtartja a meglévő csoportjaidat, a csere felülírja őket.' },
-        'Egyesítés',
-        'Csere',
+        t('Import from Claude Code: {0}.', describe(chosen.groups)),
+        { modal: true, detail: t('Merging keeps your groups, replacing overwrites them.') },
+        merge,
+        replace,
       );
       if (!answer) return;
-      mode = answer === 'Csere' ? 'replace' : 'merge';
+      mode = answer === replace ? 'replace' : 'merge';
     }
     applyImport(chosen.groups, mode);
     store.update((s) => (s.importPrompted ? s : { ...s, importPrompted: true }));
-    vscode.window.showInformationMessage(`Kész: ${describe(chosen.groups)} importálva.`);
+    vscode.window.showInformationMessage(t('Done: {0} imported.', describe(chosen.groups)));
   }
 
   /** Offers a one-time import when this workspace has no groups yet but the official list does. */
@@ -375,12 +393,9 @@ function activate(context) {
     const found = scopes.find((s) => scopeKeyFor(s.root) === key);
     if (!found) return;
     store.update((s) => ({ ...s, importPrompted: true }));
-    const answer = await vscode.window.showInformationMessage(
-      `A Claude Code-ban ${describe(found.groups)} tartozik ehhez a munkaterülethez. Átveszed őket?`,
-      'Importálás',
-      'Nem',
-    );
-    if (answer === 'Importálás') applyImport(found.groups, 'merge');
+    const yes = t('Import');
+    const answer = await vscode.window.showInformationMessage(t('Claude Code has {0} for this workspace. Import them?', describe(found.groups)), yes, t('No'));
+    if (answer === yes) applyImport(found.groups, 'merge');
   }
 
   // ---------------------------------------------------------------- commands
@@ -423,16 +438,16 @@ function activate(context) {
     if (!group) return;
     const inside = ops.descendantIds(store.groups, group.id);
     const items = [];
-    if (group.parentId) items.push({ label: '$(arrow-up) Legfelső szint', parentId: null });
+    if (group.parentId) items.push({ label: t('$(arrow-up) Top level'), parentId: null });
     for (const { group: g } of ops.flattenTree(store.groups)) {
       if (g.id === group.id || inside.has(g.id)) continue;
-      items.push({ label: groupLabel(g.id), description: g.id === group.parentId ? 'jelenlegi helye' : undefined, parentId: g.id });
+      items.push({ label: groupLabel(g.id), description: g.id === group.parentId ? t('current place') : undefined, parentId: g.id });
     }
     if (!items.length) {
-      vscode.window.showInformationMessage('Nincs másik csoport, amelyikbe át lehetne helyezni.');
+      vscode.window.showInformationMessage(t('There is no other group to move it into.'));
       return;
     }
-    const pick = await vscode.window.showQuickPick(items, { placeHolder: `„${group.name}” áthelyezése ebbe a csoportba…` });
+    const pick = await vscode.window.showQuickPick(items, { placeHolder: t('Move “{0}” into…', group.name) });
     if (!pick || pick.parentId === (group.parentId || null)) return;
     if (pick.parentId) store.updateGroups((g) => ops.setCollapsed(g, pick.parentId, false));
     store.updateGroups((g) => ops.moveGroup(g, group.id, { parentId: pick.parentId }));
@@ -448,14 +463,14 @@ function activate(context) {
   command('claudeGroups.group.setColor', async (ctx) => {
     const group = findGroup(ctx);
     if (!group) return;
-    const items = COLOR_CHOICES.map((c) => ({
+    const items = colorChoices(t).map((c) => ({
       // A subgroup without a colour of its own takes its parent's.
-      label: c.id === null && group.parentId ? 'A szülő csoport színe' : c.label,
-      description: c.id === group.color ? 'jelenlegi' : undefined,
+      label: c.id === null && group.parentId ? t('Parent group’s color') : c.label,
+      description: c.id === group.color ? t('current') : undefined,
       iconPath: c.theme ? new vscode.ThemeIcon('circle-filled', new vscode.ThemeColor(c.theme)) : new vscode.ThemeIcon('circle-outline'),
       color: c.id,
     }));
-    const pick = await vscode.window.showQuickPick(items, { placeHolder: `„${group.name}” színe` });
+    const pick = await vscode.window.showQuickPick(items, { placeHolder: t('Color of “{0}”', group.name) });
     if (pick) store.updateGroups((g) => ops.setColor(g, group.id, pick.color));
   });
 
@@ -472,13 +487,19 @@ function activate(context) {
       .filter((g) => g.id === group.id || nested.has(g.id))
       .reduce((n, g) => n + g.sessionIds.filter((id) => index.sessions.has(id)).length, 0);
     let detail;
-    if (!nested.size) detail = count ? `A benne lévő ${count} session megmarad, csak kikerül a csoportból.` : 'A csoport üres.';
-    else {
-      detail = `Vele együtt törlődik ${nested.size} alcsoportja is. `;
-      detail += count ? `A bennük lévő ${count} session megmarad, csak kikerül a csoportokból.` : 'Session nincs bennük.';
+    if (!nested.size) {
+      if (!count) detail = t('The group is empty.');
+      else detail = count === 1 ? t('The session in it stays, it just leaves the group.') : t('The {0} sessions in it stay, they just leave the group.', count);
+    } else {
+      const subgroups = nested.size === 1 ? t('Its subgroup is deleted too.') : t('Its {0} subgroups are deleted too.', nested.size);
+      let inside;
+      if (!count) inside = t('There are no sessions in them.');
+      else inside = count === 1 ? t('The session in them stays, it just leaves the groups.') : t('The {0} sessions in them stay, they just leave the groups.', count);
+      detail = `${subgroups} ${inside}`;
     }
-    const answer = await vscode.window.showWarningMessage(`Törlöd a(z) „${group.name}” csoportot?`, { modal: true, detail }, 'Törlés');
-    if (answer === 'Törlés') store.updateGroups((g) => ops.deleteGroup(g, group.id));
+    const remove = t('Delete');
+    const answer = await vscode.window.showWarningMessage(t('Delete the group “{0}”?', group.name), { modal: true, detail }, remove);
+    if (answer === remove) store.updateGroups((g) => ops.deleteGroup(g, group.id));
   });
 
   command('claudeGroups.session.open', (ctx) => ctx && ctx.sessionId && openSession(ctx.sessionId));
@@ -490,20 +511,20 @@ function activate(context) {
     const current = new Set(ids.map((id) => (ops.groupOf(store.groups, id) || {}).id));
     const items = ops.flattenTree(store.groups).map(({ group: g }) => ({
       label: groupLabel(g.id),
-      description: current.size === 1 && current.has(g.id) ? 'jelenlegi csoport' : undefined,
+      description: current.size === 1 && current.has(g.id) ? t('current group') : undefined,
       groupId: g.id,
     }));
-    items.push({ label: '$(add) Új csoport…', create: true });
-    if ([...current].some(Boolean)) items.push({ label: '$(close) Csoport nélkül', ungroup: true });
+    items.push({ label: t('$(add) New group…'), create: true });
+    if ([...current].some(Boolean)) items.push({ label: t('$(close) Ungrouped'), ungroup: true });
     const pick = await vscode.window.showQuickPick(items, {
-      placeHolder: ids.length > 1 ? `${ids.length} session áthelyezése…` : `„${shorten(sessionLabel(ids[0]), 60)}” áthelyezése…`,
+      placeHolder: ids.length > 1 ? t('Move {0} sessions to…', ids.length) : t('Move “{0}” to…', shorten(sessionLabel(ids[0]), 60)),
     });
     if (!pick) return;
     if (pick.create) {
       const name = await vscode.window.showInputBox({
-        prompt: 'Az új csoport neve',
-        value: ops.DEFAULT_NAME,
-        validateInput: (v) => (v.trim() ? undefined : 'Adj meg egy nevet.'),
+        prompt: t('Name of the new group'),
+        value: t('New group'),
+        validateInput: (v) => (v.trim() ? undefined : t('Enter a name.')),
       });
       if (name === undefined) return;
       store.updateGroups((g) => ops.createGroup(g, { id: crypto.randomUUID(), name, sessionIds: ids }));
@@ -527,7 +548,7 @@ function activate(context) {
     const ids = provider.targetSessions(ctx && ctx.sessionId);
     if (!ids.length) return;
     await vscode.env.clipboard.writeText(ids.join('\n'));
-    vscode.window.setStatusBarMessage(ids.length > 1 ? `${ids.length} session ID a vágólapon` : 'Session ID a vágólapon', 2500);
+    vscode.window.setStatusBarMessage(ids.length > 1 ? t('{0} session IDs copied', ids.length) : t('Session ID copied'), 2500);
   });
 
   command('claudeGroups.session.reveal', (ctx) => {

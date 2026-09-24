@@ -15,6 +15,11 @@ const { GroupStore } = require('../src/groupStore');
 const { SessionIndex, discoverProjectDirs, readSessionMeta } = require('../src/sessionIndex');
 const { SessionFeed } = require('../src/sessionFeed');
 const { readOfficialGroupScopes } = require('../src/officialImport');
+const { resolveLanguage, createTranslator } = require('../src/l10n');
+const { webviewStrings } = require('../src/webviewStrings');
+
+const ROOT = path.join(__dirname, '..');
+const L10N_DIR = path.join(ROOT, 'l10n');
 
 function tmpDir(name) {
   return fs.mkdtempSync(path.join(os.tmpdir(), `ccg-${name}-`));
@@ -518,6 +523,66 @@ test('GroupStore keeps a corrupt file aside instead of losing it', () => {
   assert.ok(fs.readdirSync(dir).some((f) => f.startsWith('groups.json.corrupt-')));
   store.updateGroups((g) => ops.createGroup(g, { id: 'a', name: 'A' }));
   assert.equal(JSON.parse(fs.readFileSync(file, 'utf8')).scopes.k.groups[0].name, 'A');
+});
+
+// ---------------------------------------------------------------- l10n
+
+test('resolveLanguage follows VS Code unless the setting picks a language', () => {
+  assert.equal(resolveLanguage('auto', 'hu'), 'hu');
+  assert.equal(resolveLanguage('auto', 'en-GB'), 'en');
+  assert.equal(resolveLanguage('auto', 'de'), 'en', 'no German texts: English');
+  assert.equal(resolveLanguage(undefined, 'hu'), 'hu');
+  assert.equal(resolveLanguage('hu', 'en'), 'hu');
+  assert.equal(resolveLanguage('en', 'hu'), 'en');
+});
+
+test('the translator fills in arguments and falls back to English', () => {
+  const hu = createTranslator(L10N_DIR, 'hu');
+  assert.equal(hu.language, 'hu');
+  assert.equal(hu('{0} min ago', 5), '5 perce');
+  assert.equal(hu('Move “{0}” to…', 'X'), '„X” áthelyezése…');
+  assert.equal(hu('{0} min ago'), '{0} perce', 'without arguments the placeholders stay (the webview fills them in)');
+  assert.equal(hu('Not translated {0}', 1), 'Not translated 1');
+  assert.equal(createTranslator(L10N_DIR, 'en')('{0} min ago', 5), '5 min ago');
+});
+
+/** Every English text of the extension: the t('…') calls and the webview strings. */
+function sourceTexts() {
+  const files = ['extension.js', ...fs.readdirSync(path.join(ROOT, 'src')).map((f) => path.join('src', f))];
+  const texts = new Set();
+  for (const f of files) {
+    const source = fs.readFileSync(path.join(ROOT, f), 'utf8');
+    for (const m of source.matchAll(/\bt\(\s*'((?:[^'\\]|\\.)*)'/g)) texts.add(m[1]);
+  }
+  webviewStrings((m) => texts.add(m) && m);
+  return texts;
+}
+
+const placeholders = (s) => (s.match(/\{\d+\}/g) || []).sort().join();
+
+test('every text has a Hungarian translation with the same placeholders', () => {
+  const hu = JSON.parse(fs.readFileSync(path.join(L10N_DIR, 'bundle.l10n.hu.json'), 'utf8'));
+  const texts = sourceTexts();
+  assert.ok(texts.size > 80, `${texts.size} texts found`);
+  assert.deepEqual([...texts].filter((m) => !(m in hu)), [], 'missing translations');
+  assert.deepEqual(Object.keys(hu).filter((m) => !texts.has(m)), [], 'translations nothing uses');
+  for (const m of texts) assert.equal(placeholders(hu[m]), placeholders(m), m);
+});
+
+test('the texts of package.json are in package.nls.json and package.nls.hu.json', () => {
+  const pkgText = fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8');
+  const en = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.nls.json'), 'utf8'));
+  const hu = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.nls.hu.json'), 'utf8'));
+  const used = new Set([...pkgText.matchAll(/"%([^%"]+)%"/g)].map((m) => m[1]));
+  assert.deepEqual([...used].filter((k) => !(k in en)), [], 'missing from package.nls.json');
+  assert.deepEqual(Object.keys(en).filter((k) => !used.has(k)), [], 'unused keys');
+  assert.deepEqual(Object.keys(hu).sort(), Object.keys(en).sort(), 'package.nls.hu.json has the same keys');
+  const c = JSON.parse(pkgText).contributes;
+  for (const cmd of c.commands) assert.match(cmd.title, /^%.+%$/, cmd.command);
+  for (const [name, p] of Object.entries(c.configuration.properties)) {
+    assert.match(p.description, /^%.+%$/, name);
+    for (const d of p.enumDescriptions || []) assert.match(d, /^%.+%$/, name);
+  }
 });
 
 // ---------------------------------------------------------------- official import

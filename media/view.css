@@ -332,7 +332,7 @@ body {
 
 /* ------------------------------------------------------------ ungrouped */
 
-/* Separator line above "Csoport nélkül" (below it when that block is at the top). */
+/* Separator line above "Ungrouped" (below it when that block is at the top). */
 .sep {
   height: var(--sep-height);
 }
@@ -369,6 +369,7 @@ body {
   align-items: center;
   height: var(--row-height);
   padding-left: var(--indent);
+  white-space: nowrap;
 }
 
 .item .prefix {
@@ -558,7 +559,7 @@ mark {
   background: var(--vscode-sideBar-background, transparent);
 }
 
-/* Dashed frame around the group (or "Csoport nélkül" block) a drop would go into. */
+/* Dashed frame around the group (or "Ungrouped" block) a drop would go into. */
 .drop-overlay {
   display: none;
   position: absolute;

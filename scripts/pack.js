@@ -10,9 +10,12 @@ const zlib = require('zlib');
 
 const root = path.resolve(__dirname, '..');
 const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
+// "%key%" texts of package.json, in English (VS Code picks package.nls.<language>.json itself).
+const nls = JSON.parse(fs.readFileSync(path.join(root, 'package.nls.json'), 'utf8'));
+const text = (value) => String(value).replace(/^%([^%]+)%$/, (m, key) => (key in nls ? nls[key] : m));
 
 // Only what the extension needs at runtime (no tests, no scripts).
-const FILES = ['package.json', 'extension.js', 'README.md', 'LICENSE', 'src', 'media'];
+const FILES = ['package.json', 'package.nls.json', 'package.nls.hu.json', 'extension.js', 'README.md', 'LICENSE', 'src', 'media', 'l10n'];
 
 function collect(rel) {
   const abs = path.join(root, rel);
@@ -26,8 +29,8 @@ const manifest = `<?xml version="1.0" encoding="utf-8"?>
 <PackageManifest Version="2.0.0" xmlns="http://schemas.microsoft.com/developer/vsx-schema/2011" xmlns:d="http://schemas.microsoft.com/developer/vsx-schema-design/2011">
   <Metadata>
     <Identity Language="en-US" Id="${xml(pkg.name)}" Version="${xml(pkg.version)}" Publisher="${xml(pkg.publisher)}" />
-    <DisplayName>${xml(pkg.displayName)}</DisplayName>
-    <Description xml:space="preserve">${xml(pkg.description)}</Description>
+    <DisplayName>${xml(text(pkg.displayName))}</DisplayName>
+    <Description xml:space="preserve">${xml(text(pkg.description))}</Description>
     <Tags>${xml((pkg.keywords || []).join(','))}</Tags>
     <Categories>${xml((pkg.categories || []).join(','))}</Categories>
     <GalleryFlags>Public</GalleryFlags>

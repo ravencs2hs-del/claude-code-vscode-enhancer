@@ -161,6 +161,16 @@ exports.run = async function run() {
       await cfg.update('itemIndent', undefined, vscode.ConfigurationTarget.Global);
     });
 
+    await step('the language setting switches the texts of the view', async () => {
+      const cfg = vscode.workspace.getConfiguration('claudeGroups');
+      assert.strictEqual(api.provider.lastRender.lang, 'en', 'VS Code runs in English here');
+      await cfg.update('language', 'hu', vscode.ConfigurationTarget.Global);
+      await waitFor(() => api.provider.lastRender && api.provider.lastRender.lang === 'hu', 'render in Hungarian');
+      assert.strictEqual(api.provider.translate()('New group'), 'Új csoport');
+      await cfg.update('language', undefined, vscode.ConfigurationTarget.Global);
+      await waitFor(() => api.provider.lastRender.lang === 'en', 'render in English again');
+    });
+
     const hasClaudeCode = !!vscode.extensions.getExtension('Anthropic.claude-code');
 
     await step('the Claude Code CLI is found for terminal sessions', async () => {
@@ -208,7 +218,7 @@ exports.run = async function run() {
         const plain = vscode.window.terminals.length;
         await vscode.commands.executeCommand('claudeGroups.newSession');
         const t2 = await waitFor(() => vscode.window.terminals.length > plain && vscode.window.terminals[vscode.window.terminals.length - 1], 'terminal 2');
-        assert.strictEqual(t2.name, 'Claude: új session');
+        assert.strictEqual(t2.name, 'Claude: new session');
         t2.dispose();
       } finally {
         await cfg.update('claudeCommand', undefined, vscode.ConfigurationTarget.Global);

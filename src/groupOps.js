@@ -9,7 +9,8 @@
 
 const MAX_NAME = 100;
 const COLORS = ['red', 'orange', 'yellow', 'green', 'blue', 'purple', 'pink', 'gray'];
-const DEFAULT_NAME = 'Új csoport';
+// Only for groups saved without a name; the UI suggests a translated default instead.
+const DEFAULT_NAME = 'New group';
 
 function cleanName(name) {
   const s = String(name ?? '').replace(/\s+/g, ' ').trim();

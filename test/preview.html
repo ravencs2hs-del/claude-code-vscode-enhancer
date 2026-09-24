@@ -55,17 +55,17 @@
 <div class="toolbar">
   <label class="search">
     <svg class="ico" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><circle cx="7" cy="7" r="4.25"/><path d="M10.25 10.25 13.5 13.5"/></svg>
-    <input id="search" type="text" placeholder="Keresés…" aria-label="Keresés a session-ök között" spellcheck="false" autocomplete="off">
-    <button id="clear" class="icon-btn" type="button" title="Keresés törlése" aria-label="Keresés törlése" hidden>
+    <input id="search" type="text" spellcheck="false" autocomplete="off">
+    <button id="clear" class="icon-btn" type="button" hidden>
       <svg class="ico" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M4.5 4.5l7 7M11.5 4.5l-7 7"/></svg>
     </button>
   </label>
-  <button id="newSession" class="new-session" type="button" title="Új Claude Code session" aria-label="Új session">
+  <button id="newSession" class="new-session" type="button">
     <svg class="ico" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M8 3.5v9M3.5 8h9"/></svg>
-    <span class="label">Új session</span>
+    <span class="label"></span>
   </button>
 </div>
-<div id="tree" role="tree" aria-label="Claude Code csoportok" aria-multiselectable="true"></div>
+<div id="tree" role="tree" aria-multiselectable="true"></div>
 
 <script>window.module = { exports: {} };</script>
 <script src="../src/groupOps.js"></script>
@@ -116,28 +116,28 @@
       host.state.workspace = 'webshop';
       host.state.groups = [
         { id: 'g-front', name: 'Webshop frontend', color: 'blue', collapsed: false, sessionIds: ['d1', 'd2', 'd3'] },
-        { id: 'g-pay', name: 'Fizetés', color: null, collapsed: false, parentId: 'g-front', sessionIds: ['d14', 'd15'] },
-        { id: 'g-back', name: 'API és backend', color: 'green', collapsed: false, sessionIds: ['d4', 'd5'] },
-        { id: 'g-bugs', name: 'Bugfixek', color: 'red', collapsed: false, sessionIds: ['d6', 'd7'] },
-        { id: 'g-docs', name: 'Dokumentáció', color: null, collapsed: true, sessionIds: ['d8'] },
-        { id: 'g-idea', name: 'Ötletek', color: 'purple', collapsed: true, sessionIds: ['d9', 'd10'] },
+        { id: 'g-pay', name: 'Checkout', color: null, collapsed: false, parentId: 'g-front', sessionIds: ['d14', 'd15'] },
+        { id: 'g-back', name: 'API & backend', color: 'green', collapsed: false, sessionIds: ['d4', 'd5'] },
+        { id: 'g-bugs', name: 'Bug fixes', color: 'red', collapsed: false, sessionIds: ['d6', 'd7'] },
+        { id: 'g-docs', name: 'Documentation', color: null, collapsed: true, sessionIds: ['d8'] },
+        { id: 'g-idea', name: 'Ideas', color: 'purple', collapsed: true, sessionIds: ['d9', 'd10'] },
       ];
       host.state.sessions = [
-        session('d1', 'Kosár oldal újratervezése', 0.4 * min),
-        session('d2', 'Termékszűrő lassúság javítása', 3 * h),
-        session('d3', 'Dark mode bevezetése', 26 * h),
-        session('d4', 'Rendelés-API hibakezelés', 50 * min),
-        session('d5', 'Adatbázis migráció v3', 4 * 24 * h, { worktree: true }),
-        session('d6', 'Bejelentkezési hiba Safariban', 2 * h),
-        session('d7', 'Duplikált e-mail értesítések', 2 * 24 * h),
-        session('d8', 'API dokumentáció frissítése', 8 * 24 * h),
-        session('d9', 'Kuponrendszer terv', 12 * 24 * h),
-        session('d10', 'Ajánlómotor prototípus', 20 * 24 * h),
-        session('d11', 'CI pipeline gyorsítása', 20 * min),
-        session('d12', 'README frissítése', 6 * h),
-        session('d13', 'Tesztlefedettség javítása', 3 * 24 * h),
-        session('d14', 'Bankkártyás fizetés (3DS)', 90 * min),
-        session('d15', 'Kuponkód a kosárban', 30 * h),
+        session('d1', 'Cart page redesign', 0.4 * min),
+        session('d2', 'Fix the slow product filter', 3 * h),
+        session('d3', 'Introduce dark mode', 26 * h),
+        session('d4', 'Order API error handling', 50 * min),
+        session('d5', 'Database migration v3', 4 * 24 * h, { worktree: true }),
+        session('d6', 'Login bug in Safari', 2 * h),
+        session('d7', 'Duplicate email notifications', 2 * 24 * h),
+        session('d8', 'Update the API docs', 8 * 24 * h),
+        session('d9', 'Coupon system plan', 12 * 24 * h),
+        session('d10', 'Recommendation engine prototype', 20 * 24 * h),
+        session('d11', 'Speed up the CI pipeline', 20 * min),
+        session('d12', 'Update the README', 6 * h),
+        session('d13', 'Improve test coverage', 3 * 24 * h),
+        session('d14', 'Card payments (3DS)', 90 * min),
+        session('d15', 'Coupon code in the cart', 30 * h),
       ];
     },
     // Many groups and sessions for performance testing: ?stress=<groups>x<per group>+<ungrouped>, e.g. 80x40+400.
@@ -223,6 +223,24 @@
     getState: () => host.savedState,
     setState: (s) => { host.savedState = s; },
   });
+</script>
+<script>window.module = { exports: {} };</script>
+<script src="../src/webviewStrings.js"></script>
+<script>
+  // The texts, as the extension passes them: English, or the Hungarian bundle with ?lang=hu.
+  (function () {
+    const lang = params.get('lang') === 'hu' ? 'hu' : 'en';
+    let bundle = {};
+    if (lang !== 'en') {
+      const xhr = new XMLHttpRequest();
+      xhr.open('GET', `../l10n/bundle.l10n.${lang}.json`, false);
+      xhr.send();
+      if (xhr.status === 200) bundle = JSON.parse(xhr.responseText);
+    }
+    const t = (m) => (typeof bundle[m] === 'string' ? bundle[m] : m);
+    const strings = window.module.exports.webviewStrings(t);
+    document.body.dataset.l10n = JSON.stringify(Object.assign(strings, { lang, locale: lang === 'hu' ? 'hu-HU' : 'en-US' }));
+  })();
 </script>
 <script src="../media/view.js"></script>
 <script src="shots.js"></script>
