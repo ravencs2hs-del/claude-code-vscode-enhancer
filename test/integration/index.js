@@ -250,6 +250,20 @@ exports.run = async function run() {
       assert.strictEqual(api.store.groups[0].id, docs.id);
     });
 
+    await step('subgroups: created, moved (never into themselves) and saved', async () => {
+      api.provider.onMessage({ type: 'createGroup', seq: 7, name: 'Alcsoport', sessionIds: [IDS.c], parentId: docs.id });
+      const sub = api.store.groups.find((g) => g.name === 'Alcsoport');
+      assert.ok(sub, 'subgroup created');
+      assert.strictEqual(sub.parentId, docs.id);
+      api.provider.onMessage({ type: 'moveGroup', seq: 8, id: tests.id, parentId: sub.id, beforeId: null });
+      assert.strictEqual(api.store.groups.find((g) => g.id === tests.id).parentId, sub.id);
+      api.provider.onMessage({ type: 'moveGroup', seq: 9, id: docs.id, parentId: tests.id, beforeId: null });
+      assert.strictEqual(api.store.groups.find((g) => g.id === docs.id).parentId, null, 'not into its own subgroup');
+      await waitFor(() => api.provider.lastRender && api.provider.lastRender.groups === 3, 'render of the nested groups');
+      const saved = JSON.parse(fs.readFileSync(api.store.file, 'utf8')).scopes[api.store.key];
+      assert.strictEqual(saved.groups.find((g) => g.id === tests.id).parentId, sub.id);
+    });
+
     await step('the webview reported no errors', async () => {
       await sleep(300);
       assert.deepStrictEqual(api.provider.webviewErrors, []);

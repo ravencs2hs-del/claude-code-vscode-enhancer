@@ -6,7 +6,7 @@ csoportokba rendezhetők. Egy kattintással ugyanúgy a Claude Code-ban nyílnak
 hivatalos listából.
 
 <p>
-  <img src="docs/overview.png" width="320" alt="Csoportok behúzott, fa-vonalas session-ökkel">
+  <img src="docs/overview.png" width="320" alt="Csoportok és alcsoportok behúzott, fa-vonalas session-ökkel">
   <img src="docs/new-session.png" width="320" alt="Új session indítása egy csoportba">
 </p>
 
@@ -19,6 +19,9 @@ hivatalos listából.
 - **Átrendezhető csoportok**: húzd a csoportot egy másik fölé vagy alá. Kék vonal mutatja,
   hová kerül. Ugyanez megy a ↑/↓ gombokkal (a sor fölé vitt egérrel), `Alt+↑`/`Alt+↓`-vel
   és a jobbklikkes menüből is („Mozgatás a legtetejére/legaljára”).
+- **Alcsoportok (mappák)**: egy csoportban tetszőleges mélységig lehetnek újabb csoportok.
+  Előbb az alcsoportok jönnek, utána a session-ök; a fa-vonalak minden szinten folytatódnak,
+  a szín öröklődik (ha az alcsoportnak nincs sajátja), a számláló az egész ágat számolja.
 - **Behúzott elemek előtaggal**: a csoportok session-jei beljebb kezdődnek, előttük
   faszerkezet-vonalak (`├─` / `└─`) vagy más előtag áll: pont, nyíl, gondolatjel, sorszám
   vagy saját szöveg. A behúzás pixelre állítható.
@@ -41,11 +44,13 @@ hivatalos listából.
 | Új session | *＋ Új session* gomb a kereső mellett (vagy `+` a nézet fejlécén) |
 | Új session egy csoportba | a csoport során megjelenő ＋ ikon vagy jobbklikk. Terminálos módban azonnal a csoportba kerül, a Claude Code panelen az első üzenet után (addig egy villogó „Új session” sor jelzi, rákattintva visszavonható) |
 | Új csoport | `+` ikon a nézet fejlécén, *+ Új csoport* sor, vagy session-ök húzása az új csoport mezőre |
+| Új alcsoport | a csoport során megjelenő mappa ikon, vagy jobbklikk → *Új alcsoport* |
 | Session megnyitása | kattintás (vagy `Enter`) – a Claude Code saját paneljén nyílik meg |
-| Csoport átrendezése | húzás, ↑/↓ gomb, `Alt+↑`/`Alt+↓`, jobbklikk |
+| Csoport átrendezése | húzás, ↑/↓ gomb, `Alt+↑`/`Alt+↓`, jobbklikk (a testvérei között) |
+| Csoport másik csoportba | húzd egy csoport sorának közepére (a felső/alsó szélére húzva elé/mögé kerül); `Alt+→`: bele a fölötte lévő csoportba, `Alt+←`: ki a szülőjéből; jobbklikk → *Áthelyezés csoportba…* |
 | Session áthelyezése | húzás, jobbklikk → *Áthelyezés csoportba…*, `Delete` = ki a csoportból |
 | Átnevezés | `F2` vagy a ceruza ikon |
-| Csoport törlése | kuka ikon vagy `Delete` (a session-ök megmaradnak, csak kikerülnek a csoportból) |
+| Csoport törlése | kuka ikon vagy `Delete` (az alcsoportjai is törlődnek; a session-ök megmaradnak, csak kikerülnek a csoportokból) |
 | Keresés | `Ctrl+F` vagy `/` a listában, `Esc` törli |
 | Navigálás | `↑`/`↓`, `←`/`→` (összecsuk/kinyit), `Home`/`End`, `Space` (kijelölés), `Ctrl+A` |
 
@@ -100,7 +105,7 @@ Töltsd le a `.vsix` fájlt a [Releases](https://github.com/ravencs2hs-del/claud
 oldalról, majd:
 
 ```bash
-code --install-extension claude-code-groups-1.2.0.vsix
+code --install-extension claude-code-groups-1.3.0.vsix
 ```
 
 ```bash

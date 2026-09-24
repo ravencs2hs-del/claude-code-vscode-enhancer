@@ -6,6 +6,8 @@
   --guide-x: 12px;
   --item-indent: 12px;
   --indent: calc(var(--guide-x) + var(--item-indent));
+  /* Indentation of one nesting level: a subgroup's arrow sits where its parent's items start. */
+  --step: calc(var(--item-indent) + 8px);
   --line-color: var(--vscode-tree-indentGuidesStroke, rgba(128, 128, 128, 0.45));
   --drop-color: var(--vscode-list-dropBetweenBackground, var(--vscode-focusBorder, #0078d4));
   --soft-border: var(--vscode-widget-border, rgba(128, 128, 128, 0.35));
@@ -159,8 +161,11 @@ body {
   right: 0;
 }
 
-.colored {
-  --line: color-mix(in srgb, var(--group-color) 70%, transparent);
+/* A row inside a group has its guide line at nesting level --lvl (set by view.js, 0 by default). */
+.vlist > * {
+  --lvl: 0;
+  --guide-x: calc(12px + var(--lvl) * var(--step));
+  --indent: calc(var(--guide-x) + var(--item-indent));
 }
 
 .row {
@@ -221,6 +226,11 @@ body {
 
 .twisty.open .ico {
   transform: rotate(90deg);
+}
+
+/* A subgroup's header is indented like the items of its parent. */
+.row.header.nested {
+  padding-left: var(--indent);
 }
 
 .header .name {
@@ -448,8 +458,9 @@ body[data-prefix='none'] .item .prefix {
   }
 }
 
-/* Vertical guide next to the items of a group. */
-.guides .item::before {
+/* Vertical guide next to the items (and subgroups) of a group. */
+.guides .item::before,
+.guides .nested::before {
   content: '';
   position: absolute;
   top: 0;
@@ -460,7 +471,8 @@ body[data-prefix='none'] .item .prefix {
 }
 
 /* Tree connectors: ├─ for every item, └─ (rounded) for the last one. */
-body[data-prefix='tree'] .item::after {
+body[data-prefix='tree'] .item::after,
+body[data-prefix='tree'] .nested::after {
   content: '';
   position: absolute;
   top: 50%;
@@ -470,14 +482,41 @@ body[data-prefix='tree'] .item::after {
   pointer-events: none;
 }
 
-body[data-prefix='tree'] .item.last::before {
+body[data-prefix='tree'] .item.last::before,
+body[data-prefix='tree'] .nested.last::before {
   bottom: calc(50% - 1px);
   width: calc(var(--indent) - var(--guide-x) + 6px);
   border-bottom: 1px solid var(--line);
   border-bottom-left-radius: 5px;
 }
 
-body[data-prefix='tree'] .item.last::after {
+/* A subgroup's connector stops just before its arrow. */
+body[data-prefix='tree'] .nested::after,
+body[data-prefix='tree'] .nested.last::before {
+  width: calc(var(--item-indent) + 3px);
+}
+
+body[data-prefix='tree'] .item.last::after,
+body[data-prefix='tree'] .nested.last::after {
+  display: none;
+}
+
+/* Guide lines of the enclosing groups further out (one span per level, see decorate()). */
+.oguide {
+  display: none;
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(12px + var(--k) * var(--step));
+  border-left: 1px solid var(--line);
+  pointer-events: none;
+}
+
+.guides .oguide {
+  display: block;
+}
+
+body[data-prefix='tree'] .oguide.end {
   display: none;
 }
 

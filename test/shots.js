@@ -32,7 +32,8 @@
   }
 
   function contentHeight() {
-    return Math.ceil($('#tree .vlist').getBoundingClientRect().bottom + 14);
+    const page = document.documentElement.getBoundingClientRect().top;
+    return Math.ceil($('#tree .vlist').getBoundingClientRect().bottom - page + 14);
   }
 
   async function startDrag(src, dst, where) {
@@ -52,6 +53,10 @@
 
   window.captureAll = async function captureAll() {
     await loadLib();
+    // Tall enough that nothing scrolls; each image is cropped to the content.
+    document.documentElement.style.setProperty('--preview-height', '1200px');
+    window.scrollTo(0, 0);
+    await sleep(100);
     const out = [];
     const header = (id) => $(`.row.header[data-id="${id}"]`);
 
@@ -75,7 +80,7 @@
     out.push(await save('drag-session.png', contentHeight()));
     await endDrag(dt);
     const row = $('.row.session[data-id="d11"]');
-    row.focus();
+    row.focus({ preventScroll: true });
     row.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
     row.blur();
 
@@ -86,6 +91,7 @@
     out.push(await save('new-session.png', contentHeight()));
     host.state.pendingGroupId = null;
     host.post();
+    document.documentElement.style.removeProperty('--preview-height');
     return out.join('\n');
   };
 })();

@@ -113,10 +113,84 @@ test('sanitizeGroups drops junk and keeps every session in one group', () => {
     { id: 'b', name: '', sessionIds: ['2', '3'], color: 'magenta' },
   ]);
   assert.deepEqual(out, [
-    { id: 'a', name: 'A', color: 'green', collapsed: true, sessionIds: ['1', '2'] },
-    { id: 'b', name: ops.DEFAULT_NAME, color: null, collapsed: false, sessionIds: ['3'] },
+    { id: 'a', name: 'A', color: 'green', collapsed: true, parentId: null, sessionIds: ['1', '2'] },
+    { id: 'b', name: ops.DEFAULT_NAME, color: null, collapsed: false, parentId: null, sessionIds: ['3'] },
   ]);
   assert.deepEqual(ops.sanitizeGroups('nope'), []);
+});
+
+// Nested groups: P(id, parentId, sessionIds)
+const P = (id, parentId = null, sessionIds = []) => G(id, sessionIds, { parentId });
+const parents = (groups) => groups.map((g) => `${g.id}${g.parentId ? `<${g.parentId}` : ''}`).join(',');
+
+test('sanitizeGroups keeps valid nesting and cuts unknown parents and loops', () => {
+  const out = ops.sanitizeGroups([
+    P('a'),
+    P('b', 'a'),
+    P('c', 'b'),
+    P('d', 'missing'),
+    P('e', 'e'),
+    P('x', 'y'),
+    P('y', 'z'),
+    P('z', 'x'),
+    P('w', 'x'),
+  ]);
+  assert.equal(parents(out), 'a,b<a,c<b,d,e,x,y<z,z<x,w<x');
+});
+
+test('flattenTree, groupPath and descendantIds follow the nesting', () => {
+  const groups = [P('b', 'a'), P('a'), P('c', 'b'), P('d'), P('e', 'a')];
+  assert.deepEqual(ops.flattenTree(groups).map((t) => `${t.group.id}${t.depth}`), ['a0', 'b1', 'c2', 'e1', 'd0']);
+  assert.deepEqual(ops.groupPath(groups, 'c'), ['A', 'B', 'C']);
+  assert.deepEqual([...ops.descendantIds(groups, 'a')].sort(), ['b', 'c', 'e']);
+  assert.deepEqual([...ops.descendantIds(groups, 'd')], []);
+});
+
+test('createGroup nests under an existing parent only', () => {
+  const start = [P('a'), P('b')];
+  assert.equal(parents(ops.createGroup(start, { id: 'c', name: 'C', parentId: 'a' })), 'a,b,c<a');
+  assert.equal(parents(ops.createGroup(start, { id: 'c', name: 'C', parentId: 'missing' })), 'a,b,c');
+});
+
+test('moveGroup nests, un-nests and reorders, but never into its own subtree', () => {
+  const start = [P('a'), P('b'), P('b1', 'b'), P('b2', 'b'), P('c')];
+  assert.equal(parents(ops.moveGroup(start, 'a', { parentId: 'b' })), 'b,b1<b,b2<b,a<b,c', 'into b, last');
+  assert.equal(parents(ops.moveGroup(start, 'a', { parentId: 'b', beforeId: 'b2' })), 'b,b1<b,a<b,b2<b,c', 'into b, before b2');
+  assert.equal(parents(ops.moveGroup(start, 'b2', { parentId: null, beforeId: 'a' })), 'b2,a,b,b1<b,c', 'out to the top level');
+  assert.equal(parents(ops.moveGroup(start, 'b2', {})), 'a,b,b1<b,c,b2', 'last at the top level');
+  assert.equal(ops.moveGroup(start, 'b', { parentId: 'b1' }), start, 'into its own subgroup');
+  assert.equal(ops.moveGroup(start, 'b', { parentId: 'b' }), start, 'into itself');
+  assert.equal(ops.moveGroup(start, 'a', { parentId: 'b', beforeId: 'c' }), start, 'before a group of another parent');
+  assert.equal(ops.moveGroup(start, 'b2', { parentId: 'b' }), start, 'already last in b');
+  assert.equal(ops.moveGroup(start, 'b1', { parentId: 'b', beforeId: 'b2' }), start, 'already before b2');
+  // Subgroups travel with their parent: only the moved group's parentId changes.
+  const moved = ops.moveGroup(start, 'b', { parentId: 'c' });
+  assert.equal(parents(moved), 'a,b1<b,b2<b,c,b<c');
+  assert.deepEqual(ops.flattenTree(moved).map((t) => `${t.group.id}${t.depth}`), ['a0', 'c0', 'b1', 'b12', 'b22']);
+});
+
+test('moveGroupBy and moveGroupBefore stay among siblings', () => {
+  const start = [P('a'), P('a1', 'a'), P('b'), P('a2', 'a'), P('a3', 'a')];
+  assert.equal(parents(ops.moveGroupBy(start, 'a3', -1)), 'a,a1<a,b,a3<a,a2<a');
+  assert.equal(parents(ops.moveGroupBy(start, 'a1', Infinity)), 'a,b,a2<a,a3<a,a1<a');
+  assert.equal(parents(ops.moveGroupBy(start, 'b', -1)), 'b,a,a1<a,a2<a,a3<a');
+  assert.equal(ops.moveGroupBy(start, 'a1', -1), start, 'already first among its siblings');
+  assert.equal(parents(ops.moveGroupBefore(start, 'b', 'a2')), 'a,a1<a,b<a,a2<a,a3<a', 'takes the parent of beforeId');
+});
+
+test('deleteGroup removes the subgroups too', () => {
+  const start = [P('a', null, ['1']), P('a1', 'a', ['2']), P('a11', 'a1', ['3']), P('b', null, ['4'])];
+  const out = ops.deleteGroup(start, 'a');
+  assert.equal(parents(out), 'b');
+  assert.equal(parents(ops.deleteGroup(start, 'a1')), 'a,b');
+  assert.equal(ops.deleteGroup(start, 'nope'), start);
+});
+
+test('mergeGroups only merges into top-level groups of the same name', () => {
+  let n = 0;
+  const out = ops.mergeGroups([P('top'), G('sub', [], { name: 'Teszt', parentId: 'top' })], [{ id: 'x', name: 'teszt', sessionIds: ['1'] }], () => `new${++n}`);
+  assert.equal(parents(out), 'top,sub<top,new1');
+  assert.deepEqual(out[2].sessionIds, ['1']);
 });
 
 test('mergeGroups merges by name and never steals grouped sessions', () => {

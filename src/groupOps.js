@@ -3,8 +3,9 @@
 // Pure, immutable operations on the group list. Every function returns the same array
 // instance when nothing changed, so callers can skip saving and re-rendering.
 //
-// Group shape: { id, name, color, collapsed, sessionIds: string[] }
-// A session belongs to at most one group.
+// Group shape: { id, name, color, collapsed, parentId, sessionIds: string[] }
+// A session belongs to at most one group. Groups nest through parentId (null: top level);
+// the order of the array is the order of groups among their siblings.
 
 const MAX_NAME = 100;
 const COLORS = ['red', 'orange', 'yellow', 'green', 'blue', 'purple', 'pink', 'gray'];
@@ -31,6 +32,10 @@ function sameArray(a, b) {
   return a.length === b.length && a.every((x, i) => x === b[i]);
 }
 
+function parentOf(g) {
+  return g.parentId || null;
+}
+
 function sanitizeGroups(raw) {
   if (!Array.isArray(raw)) return [];
   const groupIds = new Set();
@@ -46,10 +51,82 @@ function sanitizeGroups(raw) {
       name: cleanName(g.name) || DEFAULT_NAME,
       color: COLORS.includes(g.color) ? g.color : null,
       collapsed: g.collapsed === true,
+      parentId: typeof g.parentId === 'string' && g.parentId ? g.parentId : null,
       sessionIds,
     });
   }
+  // The parent must exist, and nesting must not loop back (such a group goes to the top level).
+  const byId = new Map(out.map((g) => [g.id, g]));
+  for (const g of out) if (g.parentId && !byId.has(g.parentId)) g.parentId = null;
+  for (const g of out) {
+    const seen = new Set();
+    for (let p = g.parentId; p && !seen.has(p); p = byId.get(p).parentId) {
+      if (p === g.id) {
+        g.parentId = null;
+        break;
+      }
+      seen.add(p);
+    }
+  }
   return out;
+}
+
+/** Ids of the groups nested (at any depth) inside group `id`. */
+function descendantIds(groups, id) {
+  const children = new Map();
+  for (const g of groups) {
+    const p = parentOf(g);
+    if (!p) continue;
+    if (!children.has(p)) children.set(p, []);
+    children.get(p).push(g.id);
+  }
+  const out = new Set();
+  const stack = [id];
+  while (stack.length) {
+    for (const child of children.get(stack.pop()) || []) {
+      if (child === id || out.has(child)) continue;
+      out.add(child);
+      stack.push(child);
+    }
+  }
+  return out;
+}
+
+/** The groups in display order (parents before their subgroups), with their nesting depth. */
+function flattenTree(groups) {
+  const ids = new Set(groups.map((g) => g.id));
+  const children = new Map();
+  for (const g of groups) {
+    const p = parentOf(g) && ids.has(g.parentId) ? g.parentId : null;
+    if (!children.has(p)) children.set(p, []);
+    children.get(p).push(g);
+  }
+  const out = [];
+  const seen = new Set();
+  const walk = (parent, depth) => {
+    for (const g of children.get(parent) || []) {
+      if (seen.has(g.id)) continue;
+      seen.add(g.id);
+      out.push({ group: g, depth });
+      walk(g.id, depth + 1);
+    }
+  };
+  walk(null, 0);
+  // Groups caught in a loop of parents (never produced by sanitizeGroups) still show up.
+  for (const g of groups) if (!seen.has(g.id)) out.push({ group: g, depth: 0 });
+  return out;
+}
+
+/** Names from the top level down to the group, e.g. ['Webshop', 'Backend']. */
+function groupPath(groups, id) {
+  const byId = new Map(groups.map((g) => [g.id, g]));
+  const names = [];
+  const seen = new Set();
+  for (let g = byId.get(id); g && !seen.has(g.id); g = parentOf(g) ? byId.get(g.parentId) : undefined) {
+    seen.add(g.id);
+    names.unshift(g.name);
+  }
+  return names;
 }
 
 function groupOf(groups, sessionId) {
@@ -69,7 +146,7 @@ function withoutSessions(groups, ids) {
   return changed ? out : groups;
 }
 
-function createGroup(groups, { id, name, sessionIds = [], color = null, collapsed = false, beforeId = null }) {
+function createGroup(groups, { id, name, sessionIds = [], color = null, collapsed = false, beforeId = null, parentId = null }) {
   const ids = unique(sessionIds);
   const out = withoutSessions(groups, ids).slice();
   const group = {
@@ -77,6 +154,7 @@ function createGroup(groups, { id, name, sessionIds = [], color = null, collapse
     name: cleanName(name) || DEFAULT_NAME,
     color: COLORS.includes(color) ? color : null,
     collapsed: collapsed === true,
+    parentId: parentId != null && out.some((g) => g.id === parentId) ? parentId : null,
     sessionIds: ids,
   };
   const at = beforeId == null ? -1 : out.findIndex((g) => g.id === beforeId);
@@ -113,32 +191,65 @@ function setAllCollapsed(groups, collapsed) {
   return groups.map((g) => (g.collapsed === collapsed ? g : { ...g, collapsed }));
 }
 
+/** Deletes a group together with its subgroups; their sessions become ungrouped. */
 function deleteGroup(groups, id) {
-  const out = groups.filter((g) => g.id !== id);
-  return out.length === groups.length ? groups : out;
+  if (!groups.some((g) => g.id === id)) return groups;
+  const drop = descendantIds(groups, id);
+  drop.add(id);
+  return groups.filter((g) => !drop.has(g.id));
 }
 
-/** Moves a group so it sits right before `beforeId` (or at the end when beforeId is null). */
-function moveGroupBefore(groups, id, beforeId) {
+/**
+ * Moves a group (with everything nested in it) under `parentId` (null: top level), right before
+ * its future sibling `beforeId`, or after the last sibling when beforeId is null. A group cannot
+ * go inside itself or one of its subgroups.
+ */
+function moveGroup(groups, id, { parentId = null, beforeId = null } = {}) {
   const group = groups.find((g) => g.id === id);
   if (!group || id === beforeId) return groups;
+  const parent = parentId == null ? null : parentId;
+  if (parent !== null && (parent === id || !groups.some((g) => g.id === parent) || descendantIds(groups, id).has(parent))) return groups;
+  if (beforeId != null) {
+    const before = groups.find((g) => g.id === beforeId);
+    if (!before || parentOf(before) !== parent) return groups;
+  }
+  const moved = parentOf(group) === parent ? group : { ...group, parentId: parent };
   const out = groups.filter((g) => g.id !== id);
-  const at = beforeId == null ? out.length : out.findIndex((g) => g.id === beforeId);
-  if (at < 0) return groups;
-  out.splice(at, 0, group);
+  let at = out.length;
+  if (beforeId != null) {
+    at = out.findIndex((g) => g.id === beforeId);
+  } else {
+    for (let i = out.length - 1; i >= 0; i--) {
+      if (parentOf(out[i]) === parent) {
+        at = i + 1;
+        break;
+      }
+    }
+  }
+  out.splice(at, 0, moved);
   return sameArray(out, groups) ? groups : out;
 }
 
-/** Moves a group by `delta` places; ±Infinity moves it to the top/bottom. */
+/** Moves a group right before `beforeId`, into the same parent (or last at the top level for null). */
+function moveGroupBefore(groups, id, beforeId) {
+  if (beforeId == null) return moveGroup(groups, id, { parentId: null, beforeId: null });
+  const before = groups.find((g) => g.id === beforeId);
+  if (!before) return groups;
+  return moveGroup(groups, id, { parentId: parentOf(before), beforeId });
+}
+
+/** Moves a group by `delta` places among its siblings; ±Infinity moves it to the first/last place. */
 function moveGroupBy(groups, id, delta) {
-  const from = groups.findIndex((g) => g.id === id);
-  if (from < 0) return groups;
-  const to = Math.max(0, Math.min(groups.length - 1, from + delta));
+  const group = groups.find((g) => g.id === id);
+  if (!group) return groups;
+  const parent = parentOf(group);
+  const siblings = groups.filter((g) => parentOf(g) === parent);
+  const from = siblings.indexOf(group);
+  const to = Math.max(0, Math.min(siblings.length - 1, from + delta));
   if (to === from) return groups;
-  const out = groups.slice();
-  const [g] = out.splice(from, 1);
-  out.splice(to, 0, g);
-  return out;
+  const after = siblings[to + 1];
+  const beforeId = delta < 0 ? siblings[to].id : after ? after.id : null;
+  return moveGroup(groups, id, { parentId: parent, beforeId });
 }
 
 /**
@@ -189,14 +300,14 @@ function moveSessionBy(groups, sessionId, delta, isVisible = () => true) {
 }
 
 /**
- * Adds imported groups: same-named groups are merged, sessions that already have a group
- * stay where they are.
+ * Adds imported groups at the top level: same-named top-level groups are merged, sessions that
+ * already have a group stay where they are.
  */
 function mergeGroups(groups, incoming, makeId) {
   let out = groups;
   for (const g of sanitizeGroups(incoming)) {
     const free = g.sessionIds.filter((s) => !groupOf(out, s));
-    const match = out.find((x) => x.name.toLocaleLowerCase() === g.name.toLocaleLowerCase());
+    const match = out.find((x) => !parentOf(x) && x.name.toLocaleLowerCase() === g.name.toLocaleLowerCase());
     if (match) {
       out = assignSessions(out, free, match.id, null);
     } else {
@@ -211,6 +322,9 @@ module.exports = {
   DEFAULT_NAME,
   cleanName,
   sanitizeGroups,
+  descendantIds,
+  flattenTree,
+  groupPath,
   groupOf,
   createGroup,
   renameGroup,
@@ -218,6 +332,7 @@ module.exports = {
   setCollapsed,
   setAllCollapsed,
   deleteGroup,
+  moveGroup,
   moveGroupBefore,
   moveGroupBy,
   assignSessions,

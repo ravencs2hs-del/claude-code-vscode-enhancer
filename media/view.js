@@ -37,7 +37,9 @@
     trash: '<path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.5h5.8l.6-8.5"/>',
     plus: '<path d="M8 3.5v9M3.5 8h9"/>',
     new: '<path d="M13 7V4.5A1.5 1.5 0 0 0 11.5 3h-7A1.5 1.5 0 0 0 3 4.5v5A1.5 1.5 0 0 0 4.5 11H5v2.5L7.5 11"/><path d="M11.5 9v5M9 11.5h5"/>',
+    folder: '<path d="M9 12.5H3.5a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1h2.8l1.4 1.5h5.3a1 1 0 0 1 1 1v2"/><path d="M12 9.5v5M9.5 12h5"/>',
   };
+  const NO_GUIDES = Object.freeze([]);
 
   // Row heights come from the stylesheet, so the CSS stays the single source of truth.
   const rootStyle = getComputedStyle(document.documentElement);
@@ -73,13 +75,13 @@
   let tops = [0]; // tops[i] is the offset of rows[i] in the list, tops[rows.length] the list height
   let indexByKey = new Map(); // row key → index in rows
   let navRows = []; // indices of the rows keyboard navigation stops at
-  let groupHeads = []; // indices of the group header rows
   let listTop = 0; // offset of the list inside the scrolled tree
   let rendered = new Map(); // row key → { el, sig, top, state, mtime } of the rows in the DOM
   let activeKey = null; // the row that takes the keyboard focus (tabindex 0)
-  let editing = null; // { kind: 'rename', groupId, n } | { kind: 'create', sessionIds, n }
+  let editing = null; // { kind: 'rename', groupId, n } | { kind: 'create', sessionIds, parentId, n }
   let editSeq = 0;
-  let drag = null; // { kind: 'group', id } | { kind: 'sessions', ids, idSet }, plus sourceKey and visual
+  let createPlaced = false; // buildRows put the new-group input inside its parent
+  let drag = null; // { kind: 'group', id, subtree } | { kind: 'sessions', ids, idSet }, plus sourceKey and visual
   let target = null; // current drop target
   let seq = 0; // state-changing operations sent so far; the extension echoes the last one as `ack`
 
@@ -218,6 +220,97 @@
     return view.groupOf.get(id) || null;
   }
 
+  /** Colour of a guide line of a group coloured `color` (the default grey when uncoloured). */
+  function lineCss(color) {
+    return color ? `color-mix(in srgb, ${COLOR_VARS[color]} 70%, transparent)` : 'var(--line-color)';
+  }
+
+  /** Indentation of one nesting level (see --step in view.css). */
+  function levelStep() {
+    return model.settings.indent + 8;
+  }
+
+  function parentKey(g) {
+    return g.parentId || null;
+  }
+
+  // Same semantics as ops.descendantIds / ops.moveGroup / ops.moveGroupBy in the extension (used
+  // for optimistic updates and to tell whether a drop would change anything).
+  function descendantsIn(groups, id) {
+    const out = new Set();
+    const stack = [id];
+    while (stack.length) {
+      const cur = stack.pop();
+      for (const g of groups) {
+        if (g.parentId === cur && g.id !== id && !out.has(g.id)) {
+          out.add(g.id);
+          stack.push(g.id);
+        }
+      }
+    }
+    return out;
+  }
+
+  function moveGroupIn(groups, id, parentId, beforeId) {
+    const group = groups.find((g) => g.id === id);
+    if (!group || id === beforeId) return groups;
+    const parent = parentId || null;
+    if (parent && (parent === id || !groups.some((g) => g.id === parent) || descendantsIn(groups, id).has(parent))) return groups;
+    if (beforeId) {
+      const before = groups.find((g) => g.id === beforeId);
+      if (!before || parentKey(before) !== parent) return groups;
+    }
+    const moved = parentKey(group) === parent ? group : Object.assign({}, group, { parentId: parent });
+    const out = groups.filter((g) => g.id !== id);
+    let at = out.length;
+    if (beforeId) {
+      at = out.findIndex((g) => g.id === beforeId);
+    } else {
+      for (let i = out.length - 1; i >= 0; i--) {
+        if (parentKey(out[i]) === parent) {
+          at = i + 1;
+          break;
+        }
+      }
+    }
+    out.splice(at, 0, moved);
+    return out.every((g, i) => g === groups[i]) ? groups : out;
+  }
+
+  function moveGroupByIn(groups, id, delta) {
+    const group = groups.find((g) => g.id === id);
+    if (!group) return groups;
+    const parent = parentKey(group);
+    const siblings = groups.filter((g) => parentKey(g) === parent);
+    const from = siblings.indexOf(group);
+    const to = Math.max(0, Math.min(siblings.length - 1, from + delta));
+    if (to === from) return groups;
+    const after = siblings[to + 1];
+    return moveGroupIn(groups, id, parent, delta < 0 ? siblings[to].id : after ? after.id : null);
+  }
+
+  /** The group and the groups it is nested in. */
+  function selfAndAncestors(id) {
+    const out = [];
+    const seen = new Set();
+    for (let g = model.groups.find((x) => x.id === id); g && !seen.has(g.id); g = model.groups.find((x) => x.id === g.parentId)) {
+      seen.add(g.id);
+      out.push(g.id);
+    }
+    return out;
+  }
+
+  /** Opens the given groups (locally and in the extension). */
+  function expandGroups(ids) {
+    for (const id of ids) {
+      const g = model.groups.find((x) => x.id === id);
+      if (g && g.collapsed) {
+        g.collapsed = false;
+        sendOp('toggleGroup', { id, collapsed: false });
+      }
+    }
+  }
+
   // Same semantics as ops.assignSessions in the extension (used for previews and optimistic updates).
   function assignLocal(groups, ids, groupId, beforeId) {
     const moving = new Set(ids);
@@ -249,16 +342,6 @@
     return changed ? out : groups;
   }
 
-  function moveGroupLocal(id, beforeId) {
-    const g = model.groups.find((x) => x.id === id);
-    if (!g) return;
-    const rest = model.groups.filter((x) => x.id !== id);
-    const at = beforeId == null ? rest.length : rest.findIndex((x) => x.id === beforeId);
-    if (at < 0) return;
-    rest.splice(at, 0, g);
-    model.groups = rest;
-  }
-
   // ------------------------------------------------------------------ view model
 
   function sortSessions(list, order) {
@@ -267,49 +350,91 @@
     return list;
   }
 
+  /**
+   * The group tree with the sessions to show. An item: { group, depth, first, last, sessions,
+   * shown, children, total, shownTotal, hidden }, where total counts the whole subtree and a
+   * search match on a group shows everything inside it.
+   */
   function computeView() {
     const q = fold(ui.query.trim());
     const matches = (s) => fold(s.title).includes(q) || (s.prompt ? fold(s.prompt).includes(q) : false) || s.id.startsWith(q);
+    const order = model.settings.order;
+    const known = new Set(model.groups.map((g) => g.id));
+    const childrenOf = new Map(); // parent id (null: top level) → groups, in sibling order
     const groupOf = new Map();
+    for (const g of model.groups) {
+      const p = g.parentId && known.has(g.parentId) ? g.parentId : null;
+      if (!childrenOf.has(p)) childrenOf.set(p, []);
+      childrenOf.get(p).push(g);
+      for (const id of g.sessionIds) if (!groupOf.has(id)) groupOf.set(id, g.id);
+    }
     const grouped = new Set();
-    const groups = model.groups.map((group, index) => {
+    const items = new Map();
+    const walk = (group, depth, index, count, inheritedMatch) => {
+      items.set(group.id, null); // visited: guards against a loop of parents
+      const nameMatch = !!q && (inheritedMatch || fold(group.name).includes(q));
       let list = [];
       for (const id of group.sessionIds) {
-        if (!groupOf.has(id)) groupOf.set(id, group.id);
         const s = sessions.get(id);
         if (s && !grouped.has(id)) {
           grouped.add(id);
           list.push(s);
         }
       }
-      list = sortSessions(list, model.settings.order);
-      const nameMatch = !!q && fold(group.name).includes(q);
+      list = sortSessions(list, order);
       const shown = q && !nameMatch ? list.filter(matches) : list;
-      return { group, index, sessions: list, shown, hidden: !!q && !nameMatch && !shown.length };
-    });
+      const kids = (childrenOf.get(group.id) || []).filter((c) => !items.has(c.id));
+      const children = kids.map((c, k) => walk(c, depth + 1, k, kids.length, nameMatch));
+      let total = list.length;
+      let shownTotal = shown.length;
+      for (const c of children) {
+        total += c.total;
+        if (!c.hidden) shownTotal += c.shownTotal;
+      }
+      const item = {
+        group,
+        depth,
+        first: index === 0,
+        last: index === count - 1,
+        sessions: list,
+        shown,
+        children,
+        total,
+        shownTotal,
+        hidden: !!q && !nameMatch && !shown.length && children.every((c) => c.hidden),
+      };
+      items.set(group.id, item);
+      return item;
+    };
+    const roots = childrenOf.get(null) || [];
+    const tree = roots.map((g, k) => walk(g, 0, k, roots.length, false));
+    for (const g of model.groups) if (!items.has(g.id)) tree.push(walk(g, 0, 0, 1, false));
     const allUngrouped = [];
     for (const s of sessions.values()) if (!grouped.has(s.id)) allUngrouped.push(s);
     allUngrouped.sort((a, b) => b.mtime - a.mtime);
-    return { q, byId: sessions, groupOf, groups, ungrouped: q ? allUngrouped.filter(matches) : allUngrouped };
+    return { q, byId: sessions, groupOf, tree, items, childrenOf, ungrouped: q ? allUngrouped.filter(matches) : allUngrouped };
   }
 
   // ------------------------------------------------------------------ flattening
 
   /**
-   * The tree as a flat list of rows. A row: { kind, key, height, nav?, head?, groupId?, color?, … }
-   * where `head` is the index of the group (or "Csoport nélkül") header the row belongs to, and a
-   * header's `end` is the index after its last row.
+   * The tree as a flat list of rows. A row: { kind, key, height, nav?, head?, groupId?, … } where
+   * `head` is the index of the header of the group (or "Csoport nélkül" block) the row is in, and
+   * a group header's `end` is the index after its last row, subgroups included. Rows inside a
+   * group also carry how to draw them: `lvl` (nesting level of their guide line), `lineColor`,
+   * `lastChild` and `outer` (the guide lines of the enclosing groups: { color, more }).
    */
   function buildRows() {
     const out = [];
+    createPlaced = false;
     const position = model.settings.ungrouped;
     if (position === 'top') pushUngrouped(out, true);
-    for (const item of view.groups) if (!item.hidden) pushGroup(out, item);
+    for (const item of view.tree) if (!item.hidden) pushGroup(out, item, null);
     if (drag && drag.visual && drag.kind === 'sessions') out.push({ kind: 'dropzone', key: 'dropzone', height: ZONE_H });
-    else if (editing && editing.kind === 'create') out.push({ kind: 'create', key: 'create', height: ROW_H });
+    else if (editing && editing.kind === 'create' && !createPlaced) out.push({ kind: 'create', key: 'create', height: ROW_H });
     else if (!view.q) out.push({ kind: 'add', key: 'add', height: ROW_H, nav: true });
     if (position === 'bottom') pushUngrouped(out, false);
-    const level1 = out.filter((r) => r.kind === 'group' || r.kind === 'ungrouped' || r.kind === 'add');
+    const level1 = out.filter((r) => (r.kind === 'group' && !r.depth) || r.kind === 'ungrouped' || r.kind === 'add');
     level1.forEach((r, k) => {
       r.pos = k + 1;
       r.size = level1.length;
@@ -317,36 +442,56 @@
     return out;
   }
 
-  function pushGroup(out, item) {
+  /**
+   * A group header and, when open, its contents: subgroups first, then the new-subgroup input,
+   * the "empty" placeholder, the sessions and the pending new session. `place` positions a
+   * subgroup inside its parent ({ head, lvl, lineColor, outer, lastChild, pos, size }).
+   */
+  function pushGroup(out, item, place) {
     const g = item.group;
-    const color = g.color && COLOR_VARS[g.color] ? g.color : null;
+    const color = (g.color && COLOR_VARS[g.color] ? g.color : null) || (place ? place.lineColor : null);
     const expanded = view.q ? true : !g.collapsed;
     const head = out.length;
-    out.push({
-      kind: 'group',
-      key: `g:${g.id}`,
-      height: ROW_H,
-      nav: true,
-      groupId: g.id,
-      color,
-      group: g,
-      expanded,
-      count: view.q ? item.shown.length : item.sessions.length,
-      first: item.index === 0,
-      last: item.index === model.groups.length - 1,
-    });
+    out.push(
+      Object.assign(
+        {
+          kind: 'group',
+          key: `g:${g.id}`,
+          height: ROW_H,
+          nav: true,
+          groupId: g.id,
+          group: g,
+          depth: item.depth,
+          color,
+          expanded,
+          count: view.q ? item.shownTotal : item.total,
+          first: item.first,
+          last: item.last,
+        },
+        place,
+      ),
+    );
     if (expanded) {
+      const kids = item.children.filter((c) => !c.hidden);
+      const creating = !!editing && editing.kind === 'create' && editing.parentId === g.id;
       const pending = model.pendingGroupId === g.id && !view.q;
       const shown = item.shown;
-      const n = shown.length + (pending ? 1 : 0);
-      if (!shown.length && !pending) {
-        out.push({ kind: 'placeholder', key: `e:${g.id}`, height: ROW_H, head, groupId: g.id, color, text: 'Üres csoport – húzz ide session-t' });
+      const empty = !kids.length && !creating && !shown.length && !pending;
+      const count = kids.length + (creating ? 1 : 0) + (empty ? 1 : 0) + shown.length + (pending ? 1 : 0);
+      const outer = place ? place.outer.concat({ color: place.lineColor, more: !place.lastChild }) : NO_GUIDES;
+      const size = kids.length + shown.length;
+      let k = 0;
+      const child = () => ({ head, lvl: item.depth, lineColor: color, outer, lastChild: ++k === count });
+      kids.forEach((c, i) => pushGroup(out, c, Object.assign(child(), { pos: i + 1, size })));
+      if (creating) {
+        createPlaced = true;
+        out.push(Object.assign({ kind: 'create', key: 'create', height: ROW_H, groupId: g.id }, child()));
       }
-      for (let i = 0; i < shown.length; i++) {
-        const s = shown[i];
-        out.push({ kind: 'session', key: `s:${s.id}`, height: ROW_H, nav: true, head, groupId: g.id, color, s, i, n, size: shown.length });
-      }
-      if (pending) out.push({ kind: 'pending', key: `p:${g.id}`, height: ROW_H, head, groupId: g.id, color });
+      if (empty) out.push(Object.assign({ kind: 'placeholder', key: `e:${g.id}`, height: ROW_H, groupId: g.id, text: 'Üres csoport – húzz ide session-t' }, child()));
+      shown.forEach((s, i) => {
+        out.push(Object.assign({ kind: 'session', key: `s:${s.id}`, height: ROW_H, nav: true, groupId: g.id, s, i, pos: kids.length + i + 1, size }, child()));
+      });
+      if (pending) out.push(Object.assign({ kind: 'pending', key: `p:${g.id}`, height: ROW_H, groupId: g.id }, child()));
     }
     out[head].end = out.length;
   }
@@ -363,12 +508,13 @@
       const list = view.ungrouped.length > limit ? view.ungrouped.slice(0, limit) : view.ungrouped;
       const rest = view.ungrouped.length - list.length;
       const n = list.length + (rest > 0 ? 1 : 0);
-      if (!list.length) out.push({ kind: 'placeholder', key: 'e:u', height: ROW_H, head, text: 'Minden session csoportban van' });
+      const child = (i) => ({ head, lvl: 0, lineColor: null, outer: NO_GUIDES, lastChild: i === n - 1 });
+      if (!list.length) out.push(Object.assign({ kind: 'placeholder', key: 'e:u', height: ROW_H, text: 'Minden session csoportban van' }, child(0), { lastChild: true }));
       for (let i = 0; i < list.length; i++) {
         const s = list[i];
-        out.push({ kind: 'session', key: `s:${s.id}`, height: ROW_H, nav: true, head, groupId: null, s, i, n, size: list.length });
+        out.push(Object.assign({ kind: 'session', key: `s:${s.id}`, height: ROW_H, nav: true, groupId: null, s, i, pos: i + 1, size: list.length }, child(i)));
       }
-      if (rest > 0) out.push({ kind: 'more', key: 'more', height: ROW_H, nav: true, head, i: list.length, rest });
+      if (rest > 0) out.push(Object.assign({ kind: 'more', key: 'more', height: ROW_H, nav: true, i: list.length, rest }, child(n - 1)));
     }
     out[head].end = out.length;
     if (atTop) out.push({ kind: 'sep', key: 'sep', height: SEP_H, head, after: true });
@@ -379,7 +525,6 @@
     tops = new Array(n + 1);
     indexByKey = new Map();
     navRows = [];
-    groupHeads = [];
     let y = 0;
     for (let i = 0; i < n; i++) {
       const row = rows[i];
@@ -390,7 +535,6 @@
         row.navPos = navRows.length;
         navRows.push(i);
       }
-      if (row.kind === 'group') groupHeads.push(i);
     }
     tops[n] = y;
     $list.style.height = `${y}px`;
@@ -469,7 +613,7 @@
   function noteText() {
     if (model.loading && !sessions.size) return 'Session-ök betöltése…';
     if (!sessions.size && !model.groups.length) return `Ebben a munkaterületben (${model.workspace}) még nincs Claude Code session.`;
-    if (view.q && view.groups.every((g) => g.hidden) && !view.ungrouped.length) return `Nincs találat: „${ui.query.trim()}”`;
+    if (view.q && view.tree.every((g) => g.hidden) && !view.ungrouped.length) return `Nincs találat: „${ui.query.trim()}”`;
     return '';
   }
 
@@ -535,6 +679,14 @@
     rendered = next;
   }
 
+  /** Where a row inside a group sits in the tree (part of its signature). */
+  function treeSig(row) {
+    if (row.lvl === undefined) return '';
+    let sig = `${row.lvl}/${row.lineColor}/${+row.lastChild}`;
+    for (const o of row.outer) sig += `/${o.color}${+o.more}`;
+    return sig;
+  }
+
   /** Everything a row's element is built from, apart from the states applyState toggles. */
   function sigOf(row) {
     const s = model.settings;
@@ -542,24 +694,24 @@
       case 'group': {
         const g = row.group;
         const renaming = !!editing && editing.kind === 'rename' && editing.groupId === g.id ? editing.n : 0;
-        return ['g', g.name, row.color, row.expanded, row.count, row.first, row.last, row.pos, row.size, renaming, view.q].join(SIG);
+        return ['g', g.name, row.color, row.expanded, row.count, row.first, row.last, row.depth, row.pos, row.size, renaming, view.q, treeSig(row)].join(SIG);
       }
       case 'session': {
         const x = row.s;
-        return ['s', x.title, x.prompt, x.createdAt, x.branch, x.worktree, row.groupId, row.color, row.i, row.n, row.size, s.prefix, s.customPrefix, view.q].join(SIG);
+        return ['s', x.title, x.prompt, x.createdAt, x.branch, x.worktree, row.groupId, row.i, row.pos, row.size, s.prefix, s.customPrefix, view.q, treeSig(row)].join(SIG);
       }
       case 'placeholder':
-        return ['e', row.text, row.color, s.prefix, s.customPrefix].join(SIG);
+        return ['e', row.text, s.prefix, s.customPrefix, treeSig(row)].join(SIG);
       case 'pending':
-        return ['p', row.color, s.prefix, s.customPrefix].join(SIG);
+        return ['p', s.prefix, s.customPrefix, treeSig(row)].join(SIG);
       case 'more':
-        return ['m', row.rest, row.i, s.prefix, s.customPrefix].join(SIG);
+        return ['m', row.rest, row.i, s.prefix, s.customPrefix, treeSig(row)].join(SIG);
       case 'ungrouped':
         return ['u', row.collapsed, row.count, row.pos, row.size].join(SIG);
       case 'add':
         return ['a', row.pos, row.size].join(SIG);
       case 'create':
-        return `c${editing ? editing.n : 0}`;
+        return `c${editing ? editing.n : 0}${treeSig(row)}`;
       case 'sep':
         return row.after ? '-a' : '-';
       default:
@@ -571,7 +723,7 @@
   function applyState(entry, row, i) {
     const selected = row.kind === 'session' && ui.selected.has(row.s.id);
     const active = row.key === activeKey;
-    const dragged = !!drag && drag.visual && (drag.kind === 'group' ? row.groupId === drag.id : row.kind === 'session' && drag.idSet.has(row.s.id));
+    const dragged = !!drag && drag.visual && (drag.kind === 'group' ? drag.subtree.has(row.groupId) : row.kind === 'session' && drag.idSet.has(row.s.id));
     const dropInto = !!target && target.highlight === i;
     const zoneActive = row.kind === 'dropzone' && !!target && target.kind === 'new';
     const state = `${+selected}${+active}${+dragged}${+dropInto}${+zoneActive}`;
@@ -633,7 +785,7 @@
         el = addRow(row);
         break;
       case 'create':
-        el = createRowFor(editing ? editing.sessionIds : []);
+        el = createRowFor(editing ? editing.sessionIds : [], editing ? editing.parentId : null);
         break;
       case 'sep':
         el = h('div', row.after ? 'sep after' : 'sep');
@@ -646,11 +798,31 @@
         el = h('div');
     }
     el.dataset.key = row.key;
-    if (row.color) {
+    if (row.kind === 'group' && row.color) {
       el.classList.add('colored');
       el.style.setProperty('--group-color', COLOR_VARS[row.color]);
     }
+    if (row.lvl !== undefined) decorate(el, row);
     return el;
+  }
+
+  /**
+   * Indentation and guide lines of a row inside a group: its own connector (the ::before/::after
+   * of .item and .nested in view.css) and one line per enclosing group further out.
+   */
+  function decorate(el, row) {
+    if (row.lvl) el.style.setProperty('--lvl', String(row.lvl));
+    if (row.lineColor) el.style.setProperty('--line', lineCss(row.lineColor));
+    if (row.lastChild) el.classList.add('last');
+    if (row.kind === 'group' || row.kind === 'create') el.classList.add('nested');
+    row.outer.forEach((o, k) => {
+      // A line whose group has nothing more below is only drawn by the plain guides (not by `tree`).
+      const guide = h('span', o.more ? 'oguide' : 'oguide end');
+      guide.setAttribute('aria-hidden', 'true');
+      guide.style.setProperty('--k', String(k));
+      guide.style.setProperty('--line', lineCss(o.color));
+      el.append(guide);
+    });
   }
 
   function twisty(open) {
@@ -671,11 +843,13 @@
     return b;
   }
 
-  function level1(el, row) {
+  function treeItem(el, level, row) {
     el.setAttribute('role', 'treeitem');
-    el.setAttribute('aria-level', '1');
-    el.setAttribute('aria-posinset', String(row.pos));
-    el.setAttribute('aria-setsize', String(row.size));
+    el.setAttribute('aria-level', String(level));
+    if (row.pos) {
+      el.setAttribute('aria-posinset', String(row.pos));
+      el.setAttribute('aria-setsize', String(row.size));
+    }
   }
 
   function groupRow(row) {
@@ -686,7 +860,7 @@
     header.dataset.id = g.id;
     header.tabIndex = -1;
     header.draggable = !renaming;
-    level1(header, row);
+    treeItem(header, row.depth + 1, row);
     header.setAttribute('aria-expanded', String(row.expanded));
     header.setAttribute(
       'data-vscode-context',
@@ -706,6 +880,7 @@
       const actions = h('span', 'actions');
       actions.append(
         actionButton('new', 'Új session ebben a csoportban'),
+        actionButton('folder', 'Új alcsoport'),
         actionButton('up', 'Feljebb (Alt+↑)', row.first),
         actionButton('down', 'Lejjebb (Alt+↓)', row.last),
         actionButton('edit', 'Átnevezés (F2)'),
@@ -732,17 +907,13 @@
   function sessionRow(row) {
     const s = row.s;
     const el = h('div', 'row item session');
-    if (row.i === row.n - 1) el.classList.add('last');
     el.dataset.kind = 'session';
     el.dataset.id = s.id;
     el.dataset.group = row.groupId || '';
     el.tabIndex = -1;
     el.draggable = true;
     el.title = tooltip(s);
-    el.setAttribute('role', 'treeitem');
-    el.setAttribute('aria-level', '2');
-    el.setAttribute('aria-posinset', String(row.i + 1));
-    el.setAttribute('aria-setsize', String(row.size));
+    treeItem(el, row.lvl + 2, row);
     el.setAttribute(
       'data-vscode-context',
       JSON.stringify({ webviewSection: 'session', sessionId: s.id, grouped: !!row.groupId, preventDefaultContextMenuItems: true }),
@@ -785,7 +956,7 @@
     const header = h('div', 'row header ungrouped');
     header.dataset.kind = 'ungrouped';
     header.tabIndex = -1;
-    level1(header, row);
+    treeItem(header, 1, row);
     header.setAttribute('aria-expanded', String(!row.collapsed));
     header.setAttribute('data-vscode-context', JSON.stringify({ webviewSection: 'ungrouped', preventDefaultContextMenuItems: true }));
     header.append(twisty(!row.collapsed), h('span', 'name', 'Csoport nélkül'), h('span', 'count', String(row.count)));
@@ -796,16 +967,17 @@
     const el = h('div', 'row header add');
     el.dataset.kind = 'add';
     el.tabIndex = -1;
-    level1(el, row);
+    treeItem(el, 1, row);
     const plus = h('span', 'twisty');
     plus.append(icon('plus'));
     el.append(plus, h('span', 'name', 'Új csoport'));
     return el;
   }
 
-  function createRowFor(ids) {
+  function createRowFor(ids, parentId) {
     const header = h('div', 'row header creating');
-    header.append(twisty(false), nameInput('', 'Az új csoport neve', (value) => commitCreate(ids, value)));
+    const label = parentId ? 'Az új alcsoport neve' : 'Az új csoport neve';
+    header.append(twisty(false), nameInput('', label, (value) => commitCreate(ids, value, parentId)));
     if (ids.length) header.append(h('span', 'count', String(ids.length)));
     return header;
   }
@@ -869,11 +1041,11 @@
     focusByKey(ui.focusKey);
   }
 
-  function commitCreate(ids, value) {
+  function commitCreate(ids, value, parentId) {
     adoptDeferred();
-    if (value) sendOp('createGroup', { name: value, sessionIds: ids });
+    if (value) sendOp('createGroup', { name: value, sessionIds: ids, parentId: parentId || null });
     render();
-    if (!value) focusByKey('add');
+    if (!value) focusByKey(parentId ? `g:${parentId}` : 'add');
   }
 
   function startRename(groupId) {
@@ -885,10 +1057,13 @@
     if (!$list.querySelector('.name-input')) editing = null;
   }
 
-  function beginCreate(sessionIds) {
+  /** Shows the name input of a new group: at the top level, or as the last subgroup of `parentId`. */
+  function beginCreate(sessionIds, parentId) {
     if (!model || drag) return;
     if (ui.query) setQuery('', false);
-    editing = { kind: 'create', sessionIds: sessionIds.slice(), n: ++editSeq };
+    const parent = parentId && model.groups.some((g) => g.id === parentId) ? parentId : null;
+    if (parent) expandGroups(selfAndAncestors(parent));
+    editing = { kind: 'create', sessionIds: sessionIds.slice(), parentId: parent, n: ++editSeq };
     render();
   }
 
@@ -981,10 +1156,9 @@
     if (row.kind === 'group') {
       const id = row.group.id;
       ui.focusKey = row.key;
-      const g = model.groups.findIndex((x) => x.id === id);
-      const to = g + delta;
-      if (g < 0 || to < 0 || to >= model.groups.length) return;
-      moveGroupLocal(id, delta < 0 ? model.groups[to].id : (model.groups[to + 1] || {}).id ?? null);
+      const next = moveGroupByIn(model.groups, id, delta);
+      if (next === model.groups) return;
+      model.groups = next;
       render();
       sendOp('moveGroupBy', { id, delta });
     } else if (row.kind === 'session' && row.groupId && model.settings.order === 'manual' && !view.q) {
@@ -993,9 +1167,44 @@
     }
   }
 
+  /** Moves a group under `parentId` (null: top level), before `beforeId` or last. */
+  function moveGroupTo(id, parentId, beforeId) {
+    const next = moveGroupIn(model.groups, id, parentId, beforeId);
+    if (next === model.groups) return false;
+    model.groups = next;
+    sendOp('moveGroup', { id, parentId: parentId || null, beforeId: beforeId || null });
+    return true;
+  }
+
+  /** Alt+→: the group becomes the last subgroup of the group above it. */
+  function indentGroup(row) {
+    const g = model.groups.find((x) => x.id === row.group.id);
+    if (!g) return;
+    const siblings = model.groups.filter((x) => parentKey(x) === parentKey(g));
+    const above = siblings[siblings.indexOf(g) - 1];
+    if (!above) return;
+    expandGroups([above.id]);
+    moveGroupTo(g.id, above.id, null);
+    ui.focusKey = row.key;
+    render();
+  }
+
+  /** Alt+←: the group moves out of its parent, right after it. */
+  function outdentGroup(row) {
+    const g = model.groups.find((x) => x.id === row.group.id);
+    const parent = g && g.parentId ? model.groups.find((x) => x.id === g.parentId) : null;
+    if (!parent) return;
+    const siblings = model.groups.filter((x) => parentKey(x) === parentKey(parent));
+    const after = siblings[siblings.indexOf(parent) + 1];
+    moveGroupTo(g.id, parentKey(parent), after ? after.id : null);
+    ui.focusKey = row.key;
+    render();
+  }
+
   function runAction(action, row) {
     const id = row.group.id;
     if (action === 'new') send('newSession', { groupId: id });
+    else if (action === 'folder') beginCreate([], id);
     else if (action === 'up') moveBy(row, -1);
     else if (action === 'down') moveBy(row, 1);
     else if (action === 'edit') startRename(id);
@@ -1112,14 +1321,20 @@
         focusNav(navRows.length - 1);
         break;
       case 'ArrowRight':
-        if (kind === 'group' || kind === 'ungrouped') {
+        if (e.altKey) {
+          if (kind === 'group') indentGroup(row);
+          else handled = false;
+        } else if (kind === 'group' || kind === 'ungrouped') {
           if (!isExpanded(row)) toggleRow(row);
           else if (pos >= 0 && navRows[pos + 1] !== undefined && rows[navRows[pos + 1]].head === i) focusNav(pos + 1);
         } else handled = false;
         break;
       case 'ArrowLeft':
-        if ((kind === 'group' || kind === 'ungrouped') && isExpanded(row)) toggleRow(row);
-        else if (kind === 'session' || kind === 'more') focusIndex(row.head);
+        if (e.altKey) {
+          if (kind === 'group') outdentGroup(row);
+          else handled = false;
+        } else if ((kind === 'group' || kind === 'ungrouped') && isExpanded(row)) toggleRow(row);
+        else if (kind === 'session' || kind === 'more' || (kind === 'group' && row.head !== undefined)) focusIndex(row.head);
         else handled = false;
         break;
       case 'Enter':
@@ -1228,7 +1443,10 @@
     }
     const row = hit.row;
     if (row.kind === 'group') {
-      drag = { kind: 'group', id: row.group.id };
+      // The group moves with its subgroups, and cannot be dropped anywhere inside them.
+      const subtree = descendantsIn(model.groups, row.group.id);
+      subtree.add(row.group.id);
+      drag = { kind: 'group', id: row.group.id, subtree };
     } else if (row.kind === 'session') {
       const id = row.s.id;
       if (!ui.selected.has(id)) setSelection([id], id);
@@ -1270,25 +1488,49 @@
     return clientY - $tree.getBoundingClientRect().top + $tree.scrollTop - listTop;
   }
 
+  /**
+   * Where a dragged group would go. On a group header: the top edge puts it before that group,
+   * the middle inside it (as its last subgroup), the bottom edge after it (or first inside it
+   * when it is open). Over a group's other rows: before or after that group, whichever half of
+   * it the pointer is in. Elsewhere: before the first or after the last top-level group.
+   */
   function groupTarget(clientY) {
-    if (!groupHeads.length) return null;
     const y = toListY(clientY);
-    let beforeId = null;
-    let lineY = tops[rows[groupHeads[groupHeads.length - 1]].end];
-    for (const i of groupHeads) {
-      const top = tops[i];
-      const bottom = tops[rows[i].end];
-      if (y < top + (bottom - top) / 2) {
-        beforeId = rows[i].group.id;
-        lineY = top;
-        break;
+    const n = rows.length;
+    const i = y >= 0 && y < tops[n] ? indexAt(y) : -1;
+    const row = i >= 0 ? rows[i] : null;
+    const place = (parentId, beforeId, lineY, depth) => {
+      if (moveGroupIn(model.groups, drag.id, parentId, beforeId) === model.groups) return { kind: 'noop' };
+      return { kind: 'group', parentId, beforeId, lineY, lineLeft: 2 + depth * levelStep() };
+    };
+    const before = (h) => place(parentKey(rows[h].group), rows[h].group.id, tops[h], rows[h].depth);
+    const after = (h) => {
+      const g = rows[h].group;
+      const siblings = view.childrenOf.get(parentKey(g) && view.items.has(g.parentId) ? g.parentId : null) || [];
+      const next = siblings[siblings.indexOf(g) + 1];
+      return place(parentKey(g), next ? next.id : null, tops[rows[h].end], rows[h].depth);
+    };
+    if (row && row.kind === 'group') {
+      if (drag.subtree.has(row.group.id)) return { kind: 'noop' };
+      const f = (y - tops[i]) / (tops[i + 1] - tops[i]);
+      if (f < 0.3) return before(i);
+      if (f > 0.7) {
+        if (!row.expanded || row.end === i + 1) return after(i);
+        const first = (view.childrenOf.get(row.group.id) || [])[0];
+        return place(row.group.id, first ? first.id : null, tops[i + 1], row.depth + 1);
       }
+      if (moveGroupIn(model.groups, drag.id, row.group.id, null) === model.groups) return { kind: 'noop' };
+      return { kind: 'group', parentId: row.group.id, beforeId: null, highlight: i };
     }
-    const order = model.groups.map((g) => g.id);
-    const from = order.indexOf(drag.id);
-    const to = beforeId == null ? order.length : order.indexOf(beforeId);
-    if (to === from || to === from + 1) return { kind: 'noop' };
-    return { kind: 'group', beforeId, lineY, lineLeft: 2 };
+    const head = row && row.head !== undefined && rows[row.head].kind === 'group' ? row.head : -1;
+    if (head >= 0) {
+      if (drag.subtree.has(rows[head].group.id)) return { kind: 'noop' };
+      return y < (tops[head] + tops[rows[head].end]) / 2 ? before(head) : after(head);
+    }
+    const roots = [];
+    for (let k = 0; k < n; k++) if (rows[k].kind === 'group' && !rows[k].depth) roots.push(k);
+    if (!roots.length) return null;
+    return y < tops[roots[0]] ? before(roots[0]) : after(roots[roots.length - 1]);
   }
 
   function ungroupTarget(head) {
@@ -1326,7 +1568,7 @@
         lineY = bottom;
       }
       if (assignLocal(model.groups, drag.ids, groupId, beforeId) === model.groups) return { kind: 'noop' };
-      return { kind: 'into', groupId, beforeId, lineY, lineLeft: GUIDE_X + model.settings.indent - 2 };
+      return { kind: 'into', groupId, beforeId, lineY, lineLeft: GUIDE_X + row.lvl * levelStep() + model.settings.indent - 2 };
     }
     if (drag.ids.every((id) => groupOfSession(id) === groupId)) return { kind: 'noop' };
     return { kind: 'into', groupId, beforeId: null, highlight: head };
@@ -1396,14 +1638,14 @@
 
   function applyDrop(d, t) {
     if (d.kind === 'group') {
-      moveGroupLocal(d.id, t.beforeId);
-      ui.focusKey = `g:${d.id}`;
-      sendOp('moveGroup', { id: d.id, beforeId: t.beforeId });
+      // Dropped into a closed group: open it, so the moved group stays in sight.
+      if (t.parentId) expandGroups([t.parentId]);
+      if (moveGroupTo(d.id, t.parentId, t.beforeId)) ui.focusKey = `g:${d.id}`;
       return;
     }
     if (t.kind === 'new') {
       if (ui.query) setQuery('', false);
-      editing = { kind: 'create', sessionIds: d.ids, n: ++editSeq };
+      editing = { kind: 'create', sessionIds: d.ids, parentId: null, n: ++editSeq };
       return;
     }
     const groupId = t.kind === 'into' ? t.groupId : null;
@@ -1448,7 +1690,7 @@
         startRename(msg.groupId);
         break;
       case 'beginCreate':
-        beginCreate(Array.isArray(msg.sessionIds) ? msg.sessionIds : []);
+        beginCreate(Array.isArray(msg.sessionIds) ? msg.sessionIds : [], typeof msg.parentId === 'string' ? msg.parentId : null);
         break;
       case 'focus':
         ui.focusKey = msg.key;

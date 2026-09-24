@@ -199,7 +199,12 @@ class GroupsViewProvider {
         store.update((s) => (s.ungroupedCollapsed === !!msg.collapsed ? s : { ...s, ungroupedCollapsed: !!msg.collapsed }));
         break;
       case 'moveGroup':
-        store.updateGroups((g) => ops.moveGroupBefore(g, msg.id, optionalString(msg.beforeId)));
+        // `parentId` (null: top level) came with subgroups; without it the group goes next to beforeId.
+        store.updateGroups((g) =>
+          msg.parentId === undefined
+            ? ops.moveGroupBefore(g, msg.id, optionalString(msg.beforeId))
+            : ops.moveGroup(g, msg.id, { parentId: optionalString(msg.parentId), beforeId: optionalString(msg.beforeId) }),
+        );
         break;
       case 'moveGroupBy':
         store.updateGroups((g) => ops.moveGroupBy(g, msg.id, Number(msg.delta) || 0));
@@ -215,7 +220,9 @@ class GroupsViewProvider {
         break;
       case 'createGroup': {
         const id = crypto.randomUUID();
-        const created = store.updateGroups((g) => ops.createGroup(g, { id, name: msg.name, sessionIds: strings(msg.sessionIds) }));
+        const created = store.updateGroups((g) =>
+          ops.createGroup(g, { id, name: msg.name, sessionIds: strings(msg.sessionIds), parentId: optionalString(msg.parentId) }),
+        );
         if (created) this.post({ type: 'focus', key: `g:${id}` });
         break;
       }

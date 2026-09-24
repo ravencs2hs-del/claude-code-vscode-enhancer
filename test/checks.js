@@ -107,7 +107,7 @@
     await check('group colours and tree connectors', () => {
       const header = $('.row.header[data-id="g-test"]');
       eq(header.classList.contains('colored') && !!header.style.getPropertyValue('--group-color'), true, 'header');
-      eq($('.row.session[data-id="s3"]').classList.contains('colored'), true, 'session');
+      eq($('.row.session[data-id="s3"]').style.getPropertyValue('--line').includes('charts-green'), true, 'session line');
       eq(ids('.row.session.last'), ['s2', 's3', 's8']);
     });
 
@@ -296,6 +296,101 @@
       await until(() => $('.row.header.ungrouped'), 'back');
     });
 
+    // Subgroups. Webshop (blue) › Backend › Adatbázis (red), with sessions on every level.
+    const nested = (id) => $(`.row.header[data-id="${id}"]`);
+    const keys = () => $$('.vlist > .row').map((e) => e.dataset.key);
+    const pad = (el) => getComputedStyle(el).paddingLeft;
+    host.state.groups = [
+      { id: 'n-a', name: 'Webshop', color: 'blue', collapsed: false, parentId: null, sessionIds: ['s1'] },
+      { id: 'n-b', name: 'Backend', color: null, collapsed: false, parentId: 'n-a', sessionIds: ['s2', 's3'] },
+      { id: 'n-c', name: 'Adatbázis', color: 'red', collapsed: false, parentId: 'n-b', sessionIds: ['s4'] },
+    ];
+    host.post();
+    await until(() => nested('n-c'), 'nested state');
+    $('#tree').scrollTop = 0;
+
+    await check('subgroups: order, indentation, levels and counts', () => {
+      eq(keys().slice(0, 7), ['g:n-a', 'g:n-b', 'g:n-c', 's:s4', 's:s2', 's:s3', 's:s1'], 'subgroups first, then sessions');
+      eq([pad(nested('n-a')), pad(nested('n-b')), pad(nested('n-c'))], ['4px', '24px', '44px'], 'header indentation');
+      eq([pad($('.row.session[data-id="s1"]')), pad($('.row.session[data-id="s2"]')), pad($('.row.session[data-id="s4"]'))], ['24px', '44px', '64px'], 'session indentation');
+      eq(['n-a', 'n-b', 'n-c'].map((id) => nested(id).getAttribute('aria-level')), ['1', '2', '3']);
+      eq($('.row.session[data-id="s4"]').getAttribute('aria-level'), '4');
+      eq(['n-a', 'n-b', 'n-c'].map((id) => nested(id).querySelector('.count').textContent), ['4', '3', '1'], 'counts include subgroups');
+    });
+
+    await check('subgroups: guide lines and inherited colour', () => {
+      eq(nested('n-b').style.getPropertyValue('--group-color').includes('charts-blue'), true, 'inherits the parent colour');
+      eq(nested('n-c').style.getPropertyValue('--group-color').includes('charts-red'), true, 'own colour wins');
+      eq([nested('n-b').classList.contains('last'), $('.row.session[data-id="s1"]').classList.contains('last')], [false, true], '├ and └');
+      const s4 = $('.row.session[data-id="s4"]');
+      eq($$('.row.session[data-id="s4"] .oguide').map((g) => g.className), ['oguide', 'oguide'], 'lines of both outer levels go on');
+      eq(s4.style.getPropertyValue('--line').includes('charts-red'), true, 'own line in the group colour');
+    });
+
+    await check('subgroups: arrows, Alt+← and Alt+→', async () => {
+      nested('n-c').click();
+      eq(!!$('.row.session[data-id="s4"]'), false, 'collapsed');
+      key('ArrowLeft');
+      eq(active(), 'g:n-b', '← on a closed subgroup goes to its parent');
+      nested('n-c').focus();
+      key('ArrowLeft', { altKey: true });
+      eq(keys().slice(0, 6), ['g:n-a', 'g:n-b', 's:s2', 's:s3', 'g:n-c', 's:s1'], 'out of Backend, right after it');
+      eq(active(), 'g:n-c', 'focus follows');
+      await until(() => group('n-c').parentId === 'n-a', 'host: out');
+      key('ArrowRight', { altKey: true });
+      eq(keys().slice(0, 5), ['g:n-a', 'g:n-b', 'g:n-c', 's:s2', 's:s3'], 'back into Backend, first because subgroups come first');
+      await until(() => group('n-c').parentId === 'n-b', 'host: in');
+      nested('n-c').click();
+      await until(() => $('.row.session[data-id="s4"]') && !group('n-c').collapsed, 'open again');
+    });
+
+    await check('subgroups: drag a group into another one and back out', async () => {
+      await dragTo(nested('n-c'), () => nested('n-a'), 'middle');
+      await until(() => group('n-c').parentId === 'n-a', 'into Webshop');
+      eq(keys().slice(0, 4), ['g:n-a', 'g:n-b', 's:s2', 's:s3'], 'Backend keeps its place');
+      eq(keys().includes('g:n-c') && keys().indexOf('g:n-c') < keys().indexOf('s:s1'), true, 'last subgroup of Webshop');
+      await dragTo(nested('n-c'), () => nested('n-a'), 'top');
+      await until(() => group('n-c').parentId === null && host.state.groups.filter((g) => !g.parentId)[0].id === 'n-c', 'top level, first');
+      await dragTo(nested('n-c'), () => nested('n-b'), 'middle');
+      await until(() => group('n-c').parentId === 'n-b', 'back into Backend');
+    });
+
+    await check('subgroups: a group cannot go into its own subgroup', async () => {
+      const src = nested('n-a');
+      const dataTransfer = await startDrag(src);
+      eq($$('.vlist > .drag-source').length >= 7, true, 'the whole subtree is dimmed');
+      over(nested('n-c'), 'middle', dataTransfer);
+      eq([$('.drop-overlay').style.display, $('.drop-indicator').style.display], ['none', 'none'], 'no target');
+      src.dispatchEvent(new DragEvent('dragend', { bubbles: true, dataTransfer }));
+    });
+
+    await check('subgroups: new subgroup with the folder button', async () => {
+      nested('n-b').querySelector('button[data-action="folder"]').click();
+      const input = await until(() => $('.creating.nested .name-input'), 'create input');
+      eq($('.creating').style.getPropertyValue('--lvl'), '1', 'at the level of Backend’s items');
+      await until(() => document.activeElement === input, 'input focus');
+      input.value = 'Cache';
+      type(input, 'Enter');
+      const sub = await until(() => host.state.groups.find((g) => g.name === 'Cache'), 'host create');
+      eq(sub.parentId, 'n-b');
+      await until(() => nested(sub.id) && keys().indexOf(`g:${sub.id}`) === keys().indexOf('g:n-c') + 2, 'after Adatbázis and its session');
+    });
+
+    await check('subgroups: search shows the path to a match', () => {
+      search('bluetooth');
+      eq(keys(), ['g:n-a', 'g:n-b', 'g:n-c', 's:s4']);
+      search('backend');
+      eq(keys().includes('s:s4') && keys().includes('s:s2') && !keys().includes('s:s1'), true, 'a matching group shows all inside it');
+      search('');
+    });
+
+    await check('subgroups: deleting a group deletes its subgroups', async () => {
+      nested('n-b').querySelector('button[data-action="trash"]').click();
+      await until(() => !nested('n-b') && !nested('n-c'), 'gone');
+      eq(host.state.groups.map((g) => g.id), ['n-a']);
+      eq(['s2', 's3', 's4'].every((id) => $(`.row.session[data-id="${id}"]`).dataset.group === ''), true, 'sessions ungrouped');
+    });
+
     // Many rows: only the visible ones are in the DOM, the rest appear on scroll.
     const many = [];
     for (let i = 0; i < 2000; i++) many.push({ id: `m${i}`, title: `Sok session ${i}`, mtime: Date.now() - i * 60000 });
@@ -314,16 +409,19 @@
       scroll(tree.scrollHeight);
       eq(!!$('.row.session[data-id="s8"]') || !!$('.row.session[data-id="m1999"]'), true, 'last rows after "more"');
       scroll(0);
-      eq(!!$('.row.header[data-id="g-idea"]'), true, 'top rows again');
+      eq(!!$(`.row.header[data-id="${host.state.groups[0].id}"]`), true, 'top rows again');
     });
 
     await check('virtualized: the focused row survives scrolling', () => {
-      $('.row.session[data-id="s1"]').focus();
-      $('.row.session[data-id="s1"]').click();
+      const s1 = $('.row.session[data-id="s1"]');
+      let next = s1.nextElementSibling;
+      while (next && !next.classList.contains('row')) next = next.nextElementSibling;
+      s1.focus();
+      s1.click();
       scroll($('#tree').scrollHeight);
       eq([active(), !!$('.row.session[data-id="s1"]')], ['s:s1', true]);
       key('ArrowDown');
-      eq(active(), 's:s2', 'navigation continues');
+      eq(active(), next.dataset.key, 'navigation continues');
       key('End');
       const tree = $('#tree');
       const row = document.activeElement.getBoundingClientRect();

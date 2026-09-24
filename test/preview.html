@@ -116,6 +116,7 @@
       host.state.workspace = 'webshop';
       host.state.groups = [
         { id: 'g-front', name: 'Webshop frontend', color: 'blue', collapsed: false, sessionIds: ['d1', 'd2', 'd3'] },
+        { id: 'g-pay', name: 'Fizetés', color: null, collapsed: false, parentId: 'g-front', sessionIds: ['d14', 'd15'] },
         { id: 'g-back', name: 'API és backend', color: 'green', collapsed: false, sessionIds: ['d4', 'd5'] },
         { id: 'g-bugs', name: 'Bugfixek', color: 'red', collapsed: false, sessionIds: ['d6', 'd7'] },
         { id: 'g-docs', name: 'Dokumentáció', color: null, collapsed: true, sessionIds: ['d8'] },
@@ -135,6 +136,8 @@
         session('d11', 'CI pipeline gyorsítása', 20 * min),
         session('d12', 'README frissítése', 6 * h),
         session('d13', 'Tesztlefedettség javítása', 3 * 24 * h),
+        session('d14', 'Bankkártyás fizetés (3DS)', 90 * min),
+        session('d15', 'Kuponkód a kosárban', 30 * h),
       ];
     },
     // Many groups and sessions for performance testing: ?stress=<groups>x<per group>+<ungrouped>, e.g. 80x40+400.
@@ -177,14 +180,18 @@
         case 'ready': host.ack = 0; host.post(); break;
         case 'toggleGroup': host.updateGroups((g) => ops.setCollapsed(g, m.id, m.collapsed)); break;
         case 'toggleUngrouped': host.state.ungroupedCollapsed = m.collapsed; break;
-        case 'moveGroup': host.updateGroups((g) => ops.moveGroupBefore(g, m.id, m.beforeId || null)); break;
+        case 'moveGroup':
+          host.updateGroups((g) => (m.parentId === undefined
+            ? ops.moveGroupBefore(g, m.id, m.beforeId || null)
+            : ops.moveGroup(g, m.id, { parentId: m.parentId || null, beforeId: m.beforeId || null })));
+          break;
         case 'moveGroupBy': host.updateGroups((g) => ops.moveGroupBy(g, m.id, m.delta)); break;
         case 'moveSessions': host.updateGroups((g) => ops.assignSessions(g, m.ids, m.groupId || null, m.beforeId || null)); break;
         case 'moveSessionBy': host.updateGroups((g) => ops.moveSessionBy(g, m.id, m.delta, known)); break;
         case 'renameGroup': host.updateGroups((g) => ops.renameGroup(g, m.id, m.name)); break;
         case 'createGroup': {
           const id = `g-${Math.random().toString(36).slice(2, 8)}`;
-          host.updateGroups((g) => ops.createGroup(g, { id, name: m.name, sessionIds: m.sessionIds || [] }));
+          host.updateGroups((g) => ops.createGroup(g, { id, name: m.name, sessionIds: m.sessionIds || [], parentId: m.parentId || null }));
           window.postMessage({ type: 'focus', key: `g:${id}` }, '*');
           break;
         }

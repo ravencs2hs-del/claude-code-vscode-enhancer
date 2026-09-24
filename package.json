@@ -2,7 +2,7 @@
   "name": "claude-code-groups",
   "displayName": "Claude Code Csoportok",
   "description": "Komolyabb session-csoportosítás a Claude Code-hoz: behúzott, előtaggal jelölt elemek, húzással átrendezhető csoportok, színek és keresés.",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "publisher": "zaza",
   "license": "MIT",
   "repository": {
@@ -105,6 +105,16 @@
         "title": "Beállítások",
         "category": "Claude csoportok",
         "icon": "$(settings-gear)"
+      },
+      {
+        "command": "claudeGroups.group.newSubgroup",
+        "title": "Új alcsoport",
+        "category": "Claude csoportok"
+      },
+      {
+        "command": "claudeGroups.group.moveToGroup",
+        "title": "Áthelyezés csoportba…",
+        "category": "Claude csoportok"
       },
       {
         "command": "claudeGroups.group.rename",
@@ -227,6 +237,11 @@
           "group": "0_session@1"
         },
         {
+          "command": "claudeGroups.group.newSubgroup",
+          "when": "webviewId == 'claudeGroups.sessions' && webviewSection == 'group'",
+          "group": "0_session@2"
+        },
+        {
           "command": "claudeGroups.newSession",
           "when": "webviewId == 'claudeGroups.sessions' && webviewSection != 'group' && webviewSection != 'session'",
           "group": "0_session@1"
@@ -297,6 +312,11 @@
           "group": "2_move@4"
         },
         {
+          "command": "claudeGroups.group.moveToGroup",
+          "when": "webviewId == 'claudeGroups.sessions' && webviewSection == 'group'",
+          "group": "2_move@5"
+        },
+        {
           "command": "claudeGroups.newGroup",
           "when": "webviewId == 'claudeGroups.sessions' && webviewSection != 'session'",
           "group": "3_new@1"
@@ -320,6 +340,14 @@
       "commandPalette": [
         {
           "command": "claudeGroups.group.newSession",
+          "when": "false"
+        },
+        {
+          "command": "claudeGroups.group.newSubgroup",
+          "when": "false"
+        },
+        {
+          "command": "claudeGroups.group.moveToGroup",
           "when": "false"
         },
         {

@@ -387,6 +387,8 @@ function activate(context) {
 
   const command = (id, fn) => context.subscriptions.push(vscode.commands.registerCommand(id, fn));
   const findGroup = (ctx) => store.groups.find((g) => ctx && g.id === ctx.groupId);
+  /** "Webshop › Backend" for a subgroup. */
+  const groupLabel = (id) => ops.groupPath(store.groups, id).join(' › ');
 
   command('claudeGroups.newSession', () => startNewSession());
   command('claudeGroups.group.newSession', (ctx) => ctx && ctx.groupId && startNewSession(ctx.groupId));
@@ -409,6 +411,33 @@ function activate(context) {
     vscode.commands.executeCommand('workbench.action.openSettings', `@ext:${context.extension.id}`),
   );
 
+  command('claudeGroups.group.newSubgroup', async (ctx) => {
+    const group = findGroup(ctx);
+    if (!group) return;
+    await provider.reveal();
+    provider.post({ type: 'beginCreate', sessionIds: [], parentId: group.id });
+  });
+
+  command('claudeGroups.group.moveToGroup', async (ctx) => {
+    const group = findGroup(ctx);
+    if (!group) return;
+    const inside = ops.descendantIds(store.groups, group.id);
+    const items = [];
+    if (group.parentId) items.push({ label: '$(arrow-up) Legfelső szint', parentId: null });
+    for (const { group: g } of ops.flattenTree(store.groups)) {
+      if (g.id === group.id || inside.has(g.id)) continue;
+      items.push({ label: groupLabel(g.id), description: g.id === group.parentId ? 'jelenlegi helye' : undefined, parentId: g.id });
+    }
+    if (!items.length) {
+      vscode.window.showInformationMessage('Nincs másik csoport, amelyikbe át lehetne helyezni.');
+      return;
+    }
+    const pick = await vscode.window.showQuickPick(items, { placeHolder: `„${group.name}” áthelyezése ebbe a csoportba…` });
+    if (!pick || pick.parentId === (group.parentId || null)) return;
+    if (pick.parentId) store.updateGroups((g) => ops.setCollapsed(g, pick.parentId, false));
+    store.updateGroups((g) => ops.moveGroup(g, group.id, { parentId: pick.parentId }));
+  });
+
   command('claudeGroups.group.rename', async (ctx) => {
     const group = findGroup(ctx);
     if (!group) return;
@@ -420,7 +449,8 @@ function activate(context) {
     const group = findGroup(ctx);
     if (!group) return;
     const items = COLOR_CHOICES.map((c) => ({
-      label: c.label,
+      // A subgroup without a colour of its own takes its parent's.
+      label: c.id === null && group.parentId ? 'A szülő csoport színe' : c.label,
       description: c.id === group.color ? 'jelenlegi' : undefined,
       iconPath: c.theme ? new vscode.ThemeIcon('circle-filled', new vscode.ThemeColor(c.theme)) : new vscode.ThemeIcon('circle-outline'),
       color: c.id,
@@ -437,12 +467,17 @@ function activate(context) {
   command('claudeGroups.group.delete', async (ctx) => {
     const group = findGroup(ctx);
     if (!group) return;
-    const count = group.sessionIds.filter((id) => index.sessions.has(id)).length;
-    const answer = await vscode.window.showWarningMessage(
-      `Törlöd a(z) „${group.name}” csoportot?`,
-      { modal: true, detail: count ? `A benne lévő ${count} session megmarad, csak kikerül a csoportból.` : 'A csoport üres.' },
-      'Törlés',
-    );
+    const nested = ops.descendantIds(store.groups, group.id);
+    const count = store.groups
+      .filter((g) => g.id === group.id || nested.has(g.id))
+      .reduce((n, g) => n + g.sessionIds.filter((id) => index.sessions.has(id)).length, 0);
+    let detail;
+    if (!nested.size) detail = count ? `A benne lévő ${count} session megmarad, csak kikerül a csoportból.` : 'A csoport üres.';
+    else {
+      detail = `Vele együtt törlődik ${nested.size} alcsoportja is. `;
+      detail += count ? `A bennük lévő ${count} session megmarad, csak kikerül a csoportokból.` : 'Session nincs bennük.';
+    }
+    const answer = await vscode.window.showWarningMessage(`Törlöd a(z) „${group.name}” csoportot?`, { modal: true, detail }, 'Törlés');
     if (answer === 'Törlés') store.updateGroups((g) => ops.deleteGroup(g, group.id));
   });
 
@@ -453,8 +488,8 @@ function activate(context) {
     const ids = provider.targetSessions(ctx && ctx.sessionId);
     if (!ids.length) return;
     const current = new Set(ids.map((id) => (ops.groupOf(store.groups, id) || {}).id));
-    const items = store.groups.map((g) => ({
-      label: g.name,
+    const items = ops.flattenTree(store.groups).map(({ group: g }) => ({
+      label: groupLabel(g.id),
       description: current.size === 1 && current.has(g.id) ? 'jelenlegi csoport' : undefined,
       groupId: g.id,
     }));
