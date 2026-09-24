@@ -2,20 +2,25 @@
 
 // Builds <name>-<version>.vsix without npm/vsce: a VSIX is a zip with the extension under
 // extension/ plus two manifest files. Needs Node >= 22.2 (zlib.crc32), e.g.
-//   ELECTRON_RUN_AS_NODE=1 "<VS Code>/Code.exe" scripts/pack.js
+//   ELECTRON_RUN_AS_NODE=1 "<VS Code>/Code.exe" scripts/pack.js [<other extension folder> <output folder>]
 
 const fs = require('fs');
 const path = require('path');
 const zlib = require('zlib');
 
-const root = path.resolve(__dirname, '..');
+const self = path.resolve(__dirname, '..');
+const root = path.resolve(process.argv[2] || self);
+const outDir = path.resolve(process.argv[3] || root);
 const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
 // "%key%" texts of package.json, in English (VS Code picks package.nls.<language>.json itself).
-const nls = JSON.parse(fs.readFileSync(path.join(root, 'package.nls.json'), 'utf8'));
+const nlsFile = path.join(root, 'package.nls.json');
+const nls = fs.existsSync(nlsFile) ? JSON.parse(fs.readFileSync(nlsFile, 'utf8')) : {};
 const text = (value) => String(value).replace(/^%([^%]+)%$/, (m, key) => (key in nls ? nls[key] : m));
 
-// Only what the extension needs at runtime (no tests, no scripts).
-const FILES = ['package.json', 'package.nls.json', 'package.nls.hu.json', 'extension.js', 'README.md', 'LICENSE', 'src', 'media', 'l10n'];
+// Only what the extension needs at runtime (no tests, no scripts). Another folder is packed whole.
+const FILES = root === self
+  ? ['package.json', 'package.nls.json', 'package.nls.hu.json', 'extension.js', 'README.md', 'CHANGELOG.md', 'LICENSE', 'src', 'media', 'l10n']
+  : fs.readdirSync(root).filter((n) => !n.endsWith('.vsix')).sort();
 
 function collect(rel) {
   const abs = path.join(root, rel);
@@ -24,6 +29,10 @@ function collect(rel) {
 }
 
 const xml = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+const changelog = FILES.includes('CHANGELOG.md')
+  ? '    <Asset Type="Microsoft.VisualStudio.Services.Content.Changelog" Path="extension/CHANGELOG.md" Addressable="true" />\n'
+  : '';
 
 const manifest = `<?xml version="1.0" encoding="utf-8"?>
 <PackageManifest Version="2.0.0" xmlns="http://schemas.microsoft.com/developer/vsx-schema/2011" xmlns:d="http://schemas.microsoft.com/developer/vsx-schema-design/2011">
@@ -52,7 +61,7 @@ const manifest = `<?xml version="1.0" encoding="utf-8"?>
   <Assets>
     <Asset Type="Microsoft.VisualStudio.Code.Manifest" Path="extension/package.json" Addressable="true" />
     <Asset Type="Microsoft.VisualStudio.Services.Content.Details" Path="extension/README.md" Addressable="true" />
-  </Assets>
+${changelog}  </Assets>
 </PackageManifest>
 `;
 
@@ -133,7 +142,7 @@ const entries = [
   ...FILES.flatMap(collect).map((rel) => ({ name: `extension/${rel}`, data: fs.readFileSync(path.join(root, rel)) })),
 ];
 
-const out = path.join(root, `${pkg.name}-${pkg.version}.vsix`);
+const out = path.join(outDir, `${pkg.name}-${pkg.version}.vsix`);
 fs.writeFileSync(out, zip(entries));
 console.log(`${path.basename(out)}: ${entries.length} files, ${fs.statSync(out).size} bytes`);
 for (const e of entries) console.log(`  ${e.name}`);

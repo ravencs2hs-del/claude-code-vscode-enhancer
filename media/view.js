@@ -1,4 +1,4 @@
-// Claude csoportok – webview UI.
+// Claude Enhancer – webview UI.
 // Renders groups and sessions, and handles selection, keyboard navigation, inline editing
 // and drag & drop. The extension owns the data; the UI sends it operations.
 //

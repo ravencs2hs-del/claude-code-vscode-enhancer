@@ -218,7 +218,7 @@ test('mergeGroups merges by name and never steals grouped sessions', () => {
 // ---------------------------------------------------------------- sessionMeta
 
 test('projectDirName matches the CLI naming', () => {
-  assert.equal(meta.projectDirName('C:\\Users\\zaza\\Desktop\\claude-code-testing'), 'C--Users-zaza-Desktop-claude-code-testing');
+  assert.equal(meta.projectDirName('C:\\Users\\alex\\Desktop\\my-project'), 'C--Users-alex-Desktop-my-project');
   assert.equal(meta.projectDirName('/home/me/my.project'), '-home-me-my-project');
   const long = `C:\\${'nagyon-hosszu-mappanev\\'.repeat(12)}vég`;
   const name = meta.projectDirName(long);
@@ -260,8 +260,8 @@ test('projectDirName agrees with the installed Claude Code extension', (t) => {
     `const ${head[3]}=${limit};${fnSource(inner)}${hashWrapper}${fnSource(head[2])}${fnSource(head[1])}return ${head[1]};`,
   )();
   const samples = [
-    'C:\\Users\\zaza\\Desktop\\claude-code-testing',
-    'c:\\Users\\zaza\\Ügyfelek\\Árvíztűrő tükörfúrógép',
+    'C:\\Users\\alex\\Desktop\\my-project',
+    'c:\\Users\\alex\\Ügyfelek\\Árvíztűrő tükörfúrógép',
     `C:\\${'nagyon-hosszu-mappanev\\'.repeat(12)}vég`,
     `/Users/me/${'x'.repeat(250)}`,
     '/tmp/a b/c.d',
@@ -284,8 +284,8 @@ test('parseSessionMeta: custom title beats AI title, AI title beats prompts', ()
     line({ type: 'queue-operation', operation: 'enqueue', timestamp: '2026-09-20T09:59:59.000Z' }),
     user('első kérdés'),
   ].join('\n');
-  const withAi = `${head}\n${line({ type: 'ai-title', aiTitle: 'YGX fájl dokumentáció', sessionId: 's' })}\n`;
-  assert.equal(meta.parseSessionMeta(withAi, withAi).title, 'YGX fájl dokumentáció');
+  const withAi = `${head}\n${line({ type: 'ai-title', aiTitle: 'API reference', sessionId: 's' })}\n`;
+  assert.equal(meta.parseSessionMeta(withAi, withAi).title, 'API reference');
   const withCustom = `${withAi}${line({ type: 'custom-title', customTitle: 'Saját "cím" \\ ✓', sessionId: 's' })}\n${line({ type: 'ai-title', aiTitle: 'Újabb AI cím' })}\n`;
   const parsed = meta.parseSessionMeta(withCustom, withCustom);
   assert.equal(parsed.title, 'Saját "cím" \\ ✓');
@@ -533,7 +533,7 @@ test('GroupStore keeps a corrupt file aside instead of losing it', () => {
 
 test('parseAccountState reads the account and the usage limits Claude Code cached', () => {
   const state = {
-    oauthAccount: { accountUuid: 'u1', emailAddress: 'a@b.c', displayName: 'Sanyi', organizationType: 'claude_pro' },
+    oauthAccount: { accountUuid: 'u1', emailAddress: 'a@b.c', displayName: 'Alex', organizationType: 'claude_pro' },
     cachedUsageUtilization: {
       fetchedAtMs: 1000,
       accountUuid: 'u1',
@@ -548,7 +548,7 @@ test('parseAccountState reads the account and the usage limits Claude Code cache
     },
   };
   const { account, usage } = parseAccountState(state);
-  assert.deepEqual(account, { name: 'Sanyi', email: 'a@b.c', plan: 'Pro' });
+  assert.deepEqual(account, { name: 'Alex', email: 'a@b.c', plan: 'Pro' });
   assert.deepEqual(usage, {
     fetchedAt: 1000,
     limits: [
@@ -655,7 +655,7 @@ test('readOfficialGroupScopes reads the Claude Code groups from a VS Code state 
   db.exec('CREATE TABLE ItemTable (key TEXT UNIQUE ON CONFLICT REPLACE, value BLOB)');
   const state = {
     extensionUpdateCheck: 1,
-    'sessionGroups:C:\\Users\\zaza\\proj': [
+    'sessionGroups:C:\\Users\\alex\\proj': [
       { id: 'g1', name: 'Dokumentáció', collapsed: false, sessionIds: ['a', 'remote:cloud', 'b'] },
       { id: 'g2', name: 'Teszt', collapsed: true, sessionIds: ['c'] },
     ],
@@ -666,7 +666,7 @@ test('readOfficialGroupScopes reads the Claude Code groups from a VS Code state 
   db.close();
   const scopes = readOfficialGroupScopes(file);
   assert.equal(scopes.length, 1);
-  assert.equal(scopes[0].root, 'C:\\Users\\zaza\\proj');
+  assert.equal(scopes[0].root, 'C:\\Users\\alex\\proj');
   assert.deepEqual(
     scopes[0].groups.map((g) => [g.name, g.collapsed, g.sessionIds.join(',')]),
     [

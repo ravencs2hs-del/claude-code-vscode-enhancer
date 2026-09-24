@@ -198,11 +198,11 @@
     });
 
     await check('search filters, highlights and reports no match', () => {
-      search('bluetooth');
+      search('weather');
       eq(shown(), ['s4']);
-      eq($('.row.session[data-id="s4"] mark').textContent, 'Bluetooth');
+      eq($('.row.session[data-id="s4"] mark').textContent, 'Weather');
       eq($('.note').hidden, true);
-      search('ötlet');
+      search('idea');
       eq(ids('.row.header[data-kind="group"]'), ['g-idea'], 'group name match');
       search('zzzz');
       eq([$('.note').hidden, shown()], [false, []]);
@@ -215,11 +215,11 @@
       key('F2');
       const input = await until(() => $('.row.header[data-id="g-test"] .name-input'), 'rename input');
       await until(() => document.activeElement === input, 'input focus');
-      input.value = 'Tesztek';
+      input.value = 'Test suite';
       type(input, 'Enter');
-      eq($('.row.header[data-id="g-test"] .name').textContent, 'Tesztek');
+      eq($('.row.header[data-id="g-test"] .name').textContent, 'Test suite');
       eq(active(), 'g:g-test', 'focus back on the group');
-      await until(() => group('g-test').name === 'Tesztek', 'host rename');
+      await until(() => group('g-test').name === 'Test suite', 'host rename');
     });
 
     await check('new group: Escape cancels, Enter creates', async () => {
@@ -231,9 +231,9 @@
       $('.row.header.add').click();
       input = await until(() => $('.creating .name-input'), 'create input again');
       await until(() => document.activeElement === input, 'input focus again');
-      input.value = 'Negyedik';
+      input.value = 'Fourth';
       type(input, 'Enter');
-      const id = (await until(() => host.state.groups.find((g) => g.name === 'Negyedik'), 'host create')).id;
+      const id = (await until(() => host.state.groups.find((g) => g.name === 'Fourth'), 'host create')).id;
       await until(() => active() === `g:${id}`, 'focus on the new group');
     });
 
@@ -310,11 +310,11 @@
     await check('session updates arrive as changes', async () => {
       const s1 = host.state.sessions.find((s) => s.id === 's1');
       $('.row.session[data-id="s2"]').click();
-      window.postMessage({ type: 'sessions', upsert: [Object.assign({}, s1, { title: 'Átnevezett', mtime: Date.now() })], remove: ['s2'] }, '*');
-      await until(() => $('.row.session[data-id="s1"] .title').textContent === 'Átnevezett', 'title update');
+      window.postMessage({ type: 'sessions', upsert: [Object.assign({}, s1, { title: 'Renamed', mtime: Date.now() })], remove: ['s2'] }, '*');
+      await until(() => $('.row.session[data-id="s1"] .title').textContent === 'Renamed', 'title update');
       eq(!!$('.row.session[data-id="s2"]'), false, 'removed');
       eq(last('selection').ids, [], 'selection pruned');
-      window.postMessage({ type: 'sessions', upsert: [{ id: 'n1', title: 'Friss session', mtime: Date.now() }] }, '*');
+      window.postMessage({ type: 'sessions', upsert: [{ id: 'n1', title: 'Fresh session', mtime: Date.now() }] }, '*');
       await until(() => $('.row.session[data-id="n1"]'), 'new session');
       window.postMessage({ type: 'sessions', full: host.state.sessions }, '*');
       await until(() => $('.row.session[data-id="s2"]') && !$('.row.session[data-id="n1"]'), 'full list');
@@ -335,14 +335,14 @@
       await until(() => $('.row.header.ungrouped'), 'back');
     });
 
-    // Subgroups. Webshop (blue) › Backend › Adatbázis (red), with sessions on every level.
+    // Subgroups. Webshop (blue) › Backend › Database (red), with sessions on every level.
     const nested = (id) => $(`.row.header[data-id="${id}"]`);
     const keys = () => $$('.vlist > .row').map((e) => e.dataset.key);
     const pad = (el) => getComputedStyle(el).paddingLeft;
     host.state.groups = [
       { id: 'n-a', name: 'Webshop', color: 'blue', collapsed: false, parentId: null, sessionIds: ['s1'] },
       { id: 'n-b', name: 'Backend', color: null, collapsed: false, parentId: 'n-a', sessionIds: ['s2', 's3'] },
-      { id: 'n-c', name: 'Adatbázis', color: 'red', collapsed: false, parentId: 'n-b', sessionIds: ['s4'] },
+      { id: 'n-c', name: 'Database', color: 'red', collapsed: false, parentId: 'n-b', sessionIds: ['s4'] },
     ];
     host.post();
     await until(() => nested('n-c'), 'nested state');
@@ -412,11 +412,11 @@
       type(input, 'Enter');
       const sub = await until(() => host.state.groups.find((g) => g.name === 'Cache'), 'host create');
       eq(sub.parentId, 'n-b');
-      await until(() => nested(sub.id) && keys().indexOf(`g:${sub.id}`) === keys().indexOf('g:n-c') + 2, 'after Adatbázis and its session');
+      await until(() => nested(sub.id) && keys().indexOf(`g:${sub.id}`) === keys().indexOf('g:n-c') + 2, 'after Database and its session');
     });
 
     await check('subgroups: search shows the path to a match', () => {
-      search('bluetooth');
+      search('weather');
       eq(keys(), ['g:n-a', 'g:n-b', 'g:n-c', 's:s4']);
       search('backend');
       eq(keys().includes('s:s4') && keys().includes('s:s2') && !keys().includes('s:s1'), true, 'a matching group shows all inside it');
@@ -432,8 +432,8 @@
 
     // Many rows: only the visible ones are in the DOM, the rest appear on scroll.
     const many = [];
-    for (let i = 0; i < 2000; i++) many.push({ id: `m${i}`, title: `Sok session ${i}`, mtime: Date.now() - i * 60000 });
-    host.state.groups.push({ id: 'g-many', name: 'Nagy csoport', color: 'blue', collapsed: false, sessionIds: many.slice(0, 1950).map((s) => s.id) });
+    for (let i = 0; i < 2000; i++) many.push({ id: `m${i}`, title: `Session ${i}`, mtime: Date.now() - i * 60000 });
+    host.state.groups.push({ id: 'g-many', name: 'Big group', color: 'blue', collapsed: false, sessionIds: many.slice(0, 1950).map((s) => s.id) });
     host.state.sessions = host.state.sessions.concat(many);
     host.post();
     await until(() => $('.row.header[data-id="g-many"]'), 'big state');

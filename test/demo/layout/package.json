@@ -1,0 +1,11 @@
+{
+  "name": "demo-layout",
+  "displayName": "Demo layout",
+  "description": "Arranges the window for the README screenshot (used only by test/demo/screenshot.ps1).",
+  "version": "0.0.1",
+  "publisher": "demo",
+  "private": true,
+  "engines": { "vscode": "^1.80.0" },
+  "activationEvents": ["onStartupFinished"],
+  "main": "extension.js"
+}

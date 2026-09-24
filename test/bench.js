@@ -80,7 +80,7 @@
     // Typing into the search box, one keystroke at a time.
     const search = document.getElementById('search');
     const typing = [];
-    for (const q of ['k', 'ko', 'kos', 'kosá', 'kosár', 'kosá', 'kos', 'ko', 'k', '']) {
+    for (const q of ['c', 'ch', 'che', 'chec', 'check', 'chec', 'che', 'ch', 'c', '']) {
       search.value = q;
       typing.push(time(() => search.dispatchEvent(new Event('input', { bubbles: true }))));
       await sleep(10);

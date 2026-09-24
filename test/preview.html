@@ -1,8 +1,8 @@
 <!DOCTYPE html>
-<html lang="hu">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Claude csoportok – előnézet</title>
+<title>Claude Enhancer – preview</title>
 <!-- Browser preview of the webview with VS Code "Dark Modern" colors and a mock extension host. -->
 <style>
   :root {
@@ -80,22 +80,22 @@
     savedState: undefined,
     state: {
       loading: false,
-      workspace: 'claude-code-testing',
+      workspace: 'my-project',
       ungroupedCollapsed: false,
       groups: [
-        { id: 'g-docs', name: 'Dokumentáció', color: null, collapsed: false, sessionIds: ['s1', 's2'] },
-        { id: 'g-test', name: 'Teszt', color: 'green', collapsed: false, sessionIds: ['s3'] },
-        { id: 'g-idea', name: 'Ötletek', color: 'purple', collapsed: true, sessionIds: ['s4'] },
+        { id: 'g-docs', name: 'Documentation', color: null, collapsed: false, sessionIds: ['s1', 's2'] },
+        { id: 'g-test', name: 'Tests', color: 'green', collapsed: false, sessionIds: ['s3'] },
+        { id: 'g-idea', name: 'Ideas', color: 'purple', collapsed: true, sessionIds: ['s4'] },
       ],
       sessions: [
-        session('s1', 'YGX fájl dokumentáció', 125 * min, { active: 'busy' }),
-        session('s2', 'Docs és bugs mappa létrehozása', 26 * 60 * min, { prompt: 'hozz létre egy docs és egy bugs mappát' }),
-        session('s3', 'Unit tesztek a parserhez', 40 * min),
-        session('s4', 'Bluetooth widget gyorsan', 3 * 24 * 60 * min),
-        session('s5', 'Claude VS Code extension grouping', 0.5 * min),
-        session('s6', 'ViewModel és slider javítás', 5 * 60 * min, { worktree: true, active: 'idle' }),
-        session('s7', 'GTA 6 játék fejlesztés', 9 * 24 * 60 * min),
-        session('s8', 'Útmutató hatékony kódolási instrukciókhoz', 50 * 24 * 60 * min),
+        session('s1', 'Write the API reference', 125 * min, { active: 'busy' }),
+        session('s2', 'Set up the docs folder', 26 * 60 * min, { prompt: 'create a docs folder and a changelog' }),
+        session('s3', 'Unit tests for the parser', 40 * min),
+        session('s4', 'Weather widget prototype', 3 * 24 * 60 * min),
+        session('s5', 'Refactor the settings page', 0.5 * min),
+        session('s6', 'Dark mode for the dashboard', 5 * 60 * min, { worktree: true, active: 'idle' }),
+        session('s7', 'Migrate to the new build tool', 9 * 24 * 60 * min),
+        session('s8', 'Write coding guidelines', 50 * 24 * 60 * min),
       ],
       settings: {
         prefix: params.get('prefix') || 'tree',
@@ -124,7 +124,8 @@
     },
     ack: 0,
     latency: Number(params.get('latency') || 5),
-    // Placeholder project used for the README screenshots (?demo=1).
+    // A made-up project with more groups (?demo=1); test/demo/setup.js builds the same one for
+    // the VS Code screenshot of the README.
     demo() {
       const h = 60 * min;
       host.state.workspace = 'webshop';
@@ -161,9 +162,9 @@
       const groupCount = Number(m[1] || 80);
       const perGroup = Number(m[2] || 40);
       const loose = Number(m[3] || 400);
-      const words = ['Kosár', 'oldal', 'újratervezése', 'Termékszűrő', 'lassúság', 'javítása', 'Dark', 'mode', 'Rendelés-API', 'hibakezelés',
-        'Adatbázis', 'migráció', 'Bejelentkezési', 'hiba', 'értesítések', 'dokumentáció', 'Kuponrendszer', 'terv', 'Ajánlómotor', 'prototípus',
-        'CI', 'pipeline', 'gyorsítása', 'README', 'frissítése', 'Tesztlefedettség', 'parser', 'unit', 'tesztek', 'refaktor'];
+      const words = ['Checkout', 'page', 'redesign', 'Product', 'filter', 'speed-up', 'Dark', 'mode', 'Orders-API', 'error handling',
+        'Database', 'migration', 'Login', 'bug', 'notifications', 'docs', 'Coupons', 'plan', 'Recommendations', 'prototype',
+        'CI', 'pipeline', 'caching', 'README', 'update', 'Test coverage', 'parser', 'unit', 'tests', 'refactor'];
       const title = (n) => Array.from({ length: 3 + (n % 4) }, (_, k) => words[(n * 7 + k * 13) % words.length]).join(' ');
       const colors = [null, 'red', 'orange', 'yellow', 'green', 'blue', 'purple', 'pink', 'gray'];
       host.state.groups = [];
@@ -171,13 +172,13 @@
       let n = 0;
       const add = () => {
         const id = `st${n}`;
-        host.state.sessions.push(session(id, `${title(n)} #${n}`, ((n * 37) % 9000) * min, { prompt: n % 3 ? `kérés: ${title(n + 1)}` : undefined, worktree: n % 17 === 0 }));
+        host.state.sessions.push(session(id, `${title(n)} #${n}`, ((n * 37) % 9000) * min, { prompt: n % 3 ? `please: ${title(n + 1)}` : undefined, worktree: n % 17 === 0 }));
         n++;
         return id;
       };
       for (let g = 0; g < groupCount; g++) {
         const sessionIds = Array.from({ length: perGroup }, add);
-        host.state.groups.push({ id: `sg${g}`, name: `Csoport ${g + 1} – ${words[g % words.length]}`, color: colors[g % colors.length], collapsed: false, sessionIds });
+        host.state.groups.push({ id: `sg${g}`, name: `Group ${g + 1} – ${words[g % words.length]}`, color: colors[g % colors.length], collapsed: false, sessionIds });
       }
       for (let i = 0; i < loose; i++) add();
     },
@@ -215,7 +216,7 @@
           host.post();
           setTimeout(() => {
             const id = `n${Date.now()}`;
-            host.state.sessions.push(session(id, 'Új session a gombbal', 0));
+            host.state.sessions.push(session(id, 'Session from the button', 0));
             if (host.state.pendingGroupId) host.updateGroups((g) => ops.assignSessions(g, [id], host.state.pendingGroupId, null));
             host.state.pendingGroupId = null;
             host.post();
@@ -257,7 +258,6 @@
   })();
 </script>
 <script src="../media/view.js"></script>
-<script src="shots.js"></script>
 <script src="bench.js"></script>
 <script src="checks.js"></script>
 </body>

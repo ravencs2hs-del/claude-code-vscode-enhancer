@@ -53,7 +53,7 @@ exports.run = async function run() {
     await step('sessions of the workspace and its worktree are listed', async () => {
       await waitFor(() => !api.index.loading, 'index');
       const titles = [...api.index.sessions.values()].map((s) => `${s.title}${s.worktree ? ' [wt]' : ''}`).sort();
-      assert.deepStrictEqual(titles, ['Docs és bugs mappa létrehozása', 'Unit tesztek a parserhez', 'Worktree munka [wt]', 'YGX fájl dokumentáció']);
+      assert.deepStrictEqual(titles, ['API reference', 'Dark mode for the dashboard [wt]', 'Set up the docs folder', 'Unit tests for the parser']);
     });
 
     await step('all contributed commands are registered', async () => {
@@ -72,7 +72,7 @@ exports.run = async function run() {
 
     await step('the account, its limits and the open sessions are picked up', async () => {
       await waitFor(() => api.provider.lastRender && api.provider.lastRender.header, 'header with the account');
-      assert.strictEqual(api.account.state.account.name, 'Teszt Elek');
+      assert.strictEqual(api.account.state.account.name, 'Alex Kim');
       assert.strictEqual(api.account.state.account.plan, 'Max');
       assert.deepStrictEqual(api.account.state.usage.limits.map((l) => l.percent), [42, 18]);
       // A running Claude Code process (this one stands in for it) has session a open.
@@ -90,7 +90,7 @@ exports.run = async function run() {
       await vscode.commands.executeCommand('claudeGroups.importFromClaude');
       assert.deepStrictEqual(
         api.store.groups.map((g) => `${g.name}${g.collapsed ? '(c)' : ''}:${g.sessionIds.map((id) => id[0]).join('')}`),
-        ['Dokumentáció:ab', 'Teszt(c):c'],
+        ['Documentation:ab', 'Tests(c):c'],
       );
       assert.ok(api.store.scope.importPrompted);
       await waitFor(() => api.provider.lastRender.groups === 2, 'render of the imported groups');
@@ -101,10 +101,10 @@ exports.run = async function run() {
     let docs;
     let tests;
     await step('groups are created from webview messages', async () => {
-      api.provider.onMessage({ type: 'createGroup', seq: 1, name: 'Dokumentáció', sessionIds: [IDS.a, IDS.b] });
-      api.provider.onMessage({ type: 'createGroup', seq: 2, name: 'Teszt', sessionIds: [IDS.c] });
-      docs = api.store.groups.find((g) => g.name === 'Dokumentáció');
-      tests = api.store.groups.find((g) => g.name === 'Teszt');
+      api.provider.onMessage({ type: 'createGroup', seq: 1, name: 'Documentation', sessionIds: [IDS.a, IDS.b] });
+      api.provider.onMessage({ type: 'createGroup', seq: 2, name: 'Tests', sessionIds: [IDS.c] });
+      docs = api.store.groups.find((g) => g.name === 'Documentation');
+      tests = api.store.groups.find((g) => g.name === 'Tests');
       assert.ok(docs && tests);
       await waitFor(() => api.provider.lastRender.groups === 2, 'render with 2 groups');
       assert.strictEqual(api.provider.buildState().ack, 2);
@@ -112,11 +112,11 @@ exports.run = async function run() {
 
     await step('groups reorder (drag message and context-menu commands)', async () => {
       api.provider.onMessage({ type: 'moveGroup', seq: 3, id: tests.id, beforeId: docs.id });
-      assert.deepStrictEqual(api.store.groups.map((g) => g.name), ['Teszt', 'Dokumentáció']);
+      assert.deepStrictEqual(api.store.groups.map((g) => g.name), ['Tests', 'Documentation']);
       await vscode.commands.executeCommand('claudeGroups.group.moveDown', { groupId: tests.id });
-      assert.deepStrictEqual(api.store.groups.map((g) => g.name), ['Dokumentáció', 'Teszt']);
+      assert.deepStrictEqual(api.store.groups.map((g) => g.name), ['Documentation', 'Tests']);
       await vscode.commands.executeCommand('claudeGroups.group.moveTop', { groupId: tests.id });
-      assert.deepStrictEqual(api.store.groups.map((g) => g.name), ['Teszt', 'Dokumentáció']);
+      assert.deepStrictEqual(api.store.groups.map((g) => g.name), ['Tests', 'Documentation']);
     });
 
     await step('sessions move between groups and back to ungrouped', async () => {
@@ -131,8 +131,8 @@ exports.run = async function run() {
     });
 
     await step('rename, collapse all / expand all', async () => {
-      api.provider.onMessage({ type: 'renameGroup', seq: 5, id: docs.id, name: '  Dokumentáció   és bugok ' });
-      assert.strictEqual(api.store.groups.find((g) => g.id === docs.id).name, 'Dokumentáció és bugok');
+      api.provider.onMessage({ type: 'renameGroup', seq: 5, id: docs.id, name: '  Documentation   and bugs ' });
+      assert.strictEqual(api.store.groups.find((g) => g.id === docs.id).name, 'Documentation and bugs');
       await vscode.commands.executeCommand('claudeGroups.collapseAll');
       assert.ok(api.store.groups.every((g) => g.collapsed));
       await vscode.commands.executeCommand('claudeGroups.expandAll');
@@ -143,14 +143,14 @@ exports.run = async function run() {
       const saved = JSON.parse(fs.readFileSync(api.store.file, 'utf8'));
       const scope = saved.scopes[api.store.key];
       assert.ok(scope, `scope ${api.store.key} missing`);
-      assert.deepStrictEqual(scope.groups.map((g) => g.name), ['Teszt', 'Dokumentáció és bugok']);
+      assert.deepStrictEqual(scope.groups.map((g) => g.name), ['Tests', 'Documentation and bugs']);
     });
 
     await step('a new transcript is picked up by the file watcher', async () => {
       const dir = [...api.index.dirs].find((d) => !d.worktree).dir;
       fs.writeFileSync(
         path.join(dir, `${IDS.f}.jsonl`),
-        `${JSON.stringify({ type: 'user', message: { role: 'user', content: 'Új session a watcherhez' }, timestamp: new Date().toISOString(), cwd: 'x' })}\n`,
+        `${JSON.stringify({ type: 'user', message: { role: 'user', content: 'New session for the watcher' }, timestamp: new Date().toISOString(), cwd: 'x' })}\n`,
       );
       await waitFor(() => api.index.sessions.has(IDS.f), 'watcher to see the new session', 10000);
       await waitFor(() => api.provider.lastRender.sessions === 5, 'render with 5 sessions');
@@ -158,8 +158,8 @@ exports.run = async function run() {
 
     await step('a rename in the transcript updates the title', async () => {
       const file = api.index.sessions.get(IDS.f).file;
-      fs.appendFileSync(file, `${JSON.stringify({ type: 'custom-title', customTitle: 'Átnevezett session', sessionId: IDS.f })}\n`);
-      await waitFor(() => api.index.sessions.get(IDS.f).title === 'Átnevezett session', 'title update', 10000);
+      fs.appendFileSync(file, `${JSON.stringify({ type: 'custom-title', customTitle: 'Renamed session', sessionId: IDS.f })}\n`);
+      await waitFor(() => api.index.sessions.get(IDS.f).title === 'Renamed session', 'title update', 10000);
     });
 
     await step('settings reach the webview', async () => {
@@ -205,7 +205,7 @@ exports.run = async function run() {
         const before = vscode.window.terminals.length;
         await vscode.commands.executeCommand('claudeGroups.session.open', { sessionId: IDS.b });
         const term = await waitFor(() => vscode.window.terminals.length > before && vscode.window.terminals[vscode.window.terminals.length - 1], 'terminal');
-        assert.strictEqual(term.name, 'Claude: Docs és bugs mappa létrehozása');
+        assert.strictEqual(term.name, 'Claude: Set up the docs folder');
         assert.strictEqual(term.creationOptions.shellPath, fake);
         assert.deepStrictEqual(term.creationOptions.shellArgs, ['--resume', IDS.b]);
         assert.strictEqual(term.creationOptions.env.CLAUDE_CONFIG_DIR, process.env.CLAUDE_CONFIG_DIR);
@@ -249,7 +249,7 @@ exports.run = async function run() {
         // Stand-in for the first message typed into the new panel.
         const id = '12121212-1212-4121-8121-121212121212';
         const dir = [...api.index.dirs].find((d) => !d.worktree).dir;
-        fs.writeFileSync(path.join(dir, `${id}.jsonl`), `${JSON.stringify({ type: 'user', message: { role: 'user', content: 'első üzenet' }, timestamp: new Date().toISOString() })}\n`);
+        fs.writeFileSync(path.join(dir, `${id}.jsonl`), `${JSON.stringify({ type: 'user', message: { role: 'user', content: 'first message' }, timestamp: new Date().toISOString() })}\n`);
         await waitFor(() => api.store.groups.find((g) => g.id === group.id).sessionIds.includes(id), 'claim into group', 10000);
         assert.strictEqual(api.provider.buildState().pendingGroupId, null);
       });
@@ -263,7 +263,7 @@ exports.run = async function run() {
         await vscode.commands.executeCommand('claudeGroups.session.open', { sessionId: IDS.b });
         await waitFor(() => claudeTabs().length > before, 'Claude Code panel', 30000);
         // The panel is titled after the session once the transcript has loaded.
-        const titled = await waitFor(() => claudeTabs().find((t) => t.label.includes('Docs és bugs')), 'panel titled after the session', 20000);
+        const titled = await waitFor(() => claudeTabs().find((t) => t.label.includes('docs folder')), 'panel titled after the session', 20000);
         results.push({ name: `  panel tab: "${titled.label}"`, ok: true, ms: 0 });
       });
     }
@@ -276,8 +276,8 @@ exports.run = async function run() {
     });
 
     await step('subgroups: created, moved (never into themselves) and saved', async () => {
-      api.provider.onMessage({ type: 'createGroup', seq: 7, name: 'Alcsoport', sessionIds: [IDS.c], parentId: docs.id });
-      const sub = api.store.groups.find((g) => g.name === 'Alcsoport');
+      api.provider.onMessage({ type: 'createGroup', seq: 7, name: 'Subgroup', sessionIds: [IDS.c], parentId: docs.id });
+      const sub = api.store.groups.find((g) => g.name === 'Subgroup');
       assert.ok(sub, 'subgroup created');
       assert.strictEqual(sub.parentId, docs.id);
       api.provider.onMessage({ type: 'moveGroup', seq: 8, id: tests.id, parentId: sub.id, beforeId: null });
